@@ -240,6 +240,100 @@ def line_minimize(x_start, direction):
 	else:
 		return mapped_pos[mapped_pot.index(min(mapped_pot))]
 
+def min_mode_dimer(x, guess, delta_x=0.01, delta_theta=0.01):
+	
+	n = guess/la.norm(guess)
+	for iter in range(0,10):
+		x1 = x + delta_x*n
+		x2 = x - delta_x*n
+		f  = -pots.gradient(x)
+		f1 = -pots.gradient(x1)
+		f2 = 2*f - f1
+		fp1 = f1 - np.dot(f1, n)*n
+		fp2 = f2 - np.dot(f2, n)*n
+		fp  = (f1 - f2)/delta_x
+		n2  = fp/la.norm(fp)
+
+		# Construct rotation in plane of n, n2 by angle delta_theta
+		on1 = n/la.norm(n)
+		on2 = n2 - np.dot(n2,on1)*on1
+		on2 /= la.norm(on2)
+		rot = np.zeros((len(on1), len(on1)))
+		for i in range(0,len(on1)):
+			for j in range(0,len(on1)):
+				if i == j:
+					rot[i][j] += 1
+				rot[i][j] += np.sin(delta_theta)*(on2[i]*on1[j]-on1[i]*on2[j])
+				rot[i][j] += (np.cos(delta_theta)-1)*(on1[i]*on1[j]+on2[i]*on2[j])
+
+		ns  = np.matmul(rot, n)
+		n2s = np.matmul(rot, n2)
+
+		x1s = x + delta_x * ns
+		x2s = x - delta_x * ns
+		f1s = -pots.gradient(x1s)
+		f2s = 2*f - f1s
+		fp1s = f1s - np.dot(f1s, ns)*ns
+		fp2s = f2s - np.dot(f2s, ns)*ns
+		fps  = (fp1s - fp2s)/delta_x
+		
+		F  = (np.dot(fps, n2s) + np.dot(fp, n2))/2
+		Fp = (np.dot(fps, n2s) - np.dot(fp, n2))/delta_theta
+
+		dt = 0.5 * np.arctan(2*F/Fp) - delta_theta/2
+		if Fp < 0:
+			dt += np.pi/2
+
+		on1s = ns/la.norm(ns)
+		on2s = n2s - np.dot(n2s, on1s)*on1s
+		on2s /= la.norm(on2s)
+		rots = np.zeros((len(on1s), len(on1s)))
+		for i in range(0,len(on1s)):
+			for j in range(0,len(on1s)):
+				if i == j:
+					rots[i][j] += 1
+				rots[i][j] += np.sin(dt)*(on2s[i]*on1s[j]-on1s[i]*on2s[j])
+				rots[i][j] += (np.cos(dt)-1)*(on1s[i]*on1s[j]+on2s[i]*on2s[j])
+
+		n = np.matmul(rots, ns)
+		print n, la.det(rots), la.det(rot)
+
+def min_mode_simple(x, guess, delta_x=0.01, delta_theta=0.1):
+	x = np.array(x)
+	guess = np.array(guess)
+	n = guess/la.norm(guess)
+	while True:
+		print n
+		xt = x + delta_x*n
+		g = pots.gradient(xt)
+		xt -= delta_x * delta_theta * g/la.norm(g)
+		nn = xt - x
+		nn /= la.norm(nn)
+		da = np.arccos(np.dot(nn, n))
+		n = nn
+		if abs(da) < 0.1*np.pi/180:
+			print da*180/np.pi
+			break
+
+def min_mode_lanczos(x, guess):
+	
+	DEL_X = 0.01
+	r = [guess]
+	b = [la.norm(r[0])]
+	q = [np.zeros(len(r[0]))]
+	u = []
+	a = []
+
+	for k in range(1, 10):
+		q.append(r[-1]/b[-1])
+		u.append((pots.gradient(x + DEL_X*q[-1]) - pots.gradient(x))/DEL_X)
+		r.append(u[-1] - b[-1]*q[-2])
+		a.append(np.dot(q[-1], r[-1]))
+		r[-1] = r[-1] - a[-1]*q[-1]
+		b.append(la.norm(r[-1]))
+		print q[-1]
+
+
 def min_mode_plane_min(axes=[], pot_axis=None):
 
 	rand_dist = 0.001
@@ -261,6 +355,8 @@ def min_mode_plane_min(axes=[], pot_axis=None):
 
 	for n in range(0,steps_res*2):
 
+		pots.track_pot_evals = True
+
 		force          = -pots.gradient(x)
 		eigval, eigvec = pots.min_mode(x) 
 		fpara          = np.dot(force, eigvec)*eigvec
@@ -281,6 +377,9 @@ def min_mode_plane_min(axes=[], pot_axis=None):
 				break
 
 		path.append(np.array(x))
+
+		pots.track_pot_evals = False
+
 		path_pot.append(pots.potential(x))
 		path_force.append(la.norm(feff))
 	
@@ -299,8 +398,53 @@ def min_mode_plane_min(axes=[], pot_axis=None):
 
 	if pot_axis != None:
 		lab = "Points: " + str(len(path))
-		pot_axis.plot(*zip(*path),label=lab)
+		pot_axis.plot(*zip(*path),marker="+",label=lab)
+
+def act_relax(axes, pot_axis=None,
+	delta_x = 0.1):
 	
+	local_min = np.zeros(2)
+	x = local_min + (np.random.rand(len(local_min))*2-1) * delta_x
+	path = [np.array(x)]
+	path_pot = [pots.potential(path[-1])]
+	path_for = [la.norm(pots.gradient(path[-1]))]
+	delta_pot = []
+	for n in range(0,100):
+
+		pots.track_pot_evals = True
+		xh   = x - local_min
+		xh  /= la.norm(xh)
+		f    = -pots.gradient(x)
+		path_for.append(la.norm(f))
+		f    = np.tanh(la.norm(f))*f/la.norm(f)
+		fpar = np.dot(f, xh)*xh
+		fper = f - fpar
+		feff = fper - 1.1 * fpar
+		x   += delta_x * feff
+		x    = line_minimize(x, fper)
+		pots.track_pot_evals = False
+
+		path.append(np.array(x))
+		path_pot.append(pots.potential(x))
+		delta_pot.append(path_pot[-1]-path_pot[-2])
+
+		if len(path) >= 3:
+			if np.dot(path[-1]-path[-2], path[-2]-path[-3]) < 0:
+				path.append((path[-1]+path[-2])/2)
+				break
+
+		#if path_for[-1] < path_for[-2]:
+		#	break
+
+	if len(axes) > 0:
+		axes[0].plot(path_pot)
+	if len(axes) > 1:
+		axes[1].plot(path_for)
+	if len(axes) > 2:
+		axes[2].plot(delta_pot)
+
+	if pot_axis != None:
+		pot_axis.plot(*zip(*path), marker="+")
 
 def test_method(method, repeats):
 
@@ -310,8 +454,13 @@ def test_method(method, repeats):
 		pots.current_potential = ps[npot]
 		axes = [plt.subplot(len(ps), plots, plots*npot+i+1) for i in range(0,plots-1)]
 		for testn in range(0,repeats):
+			pots.pot_evals = 0
 			method(axes, pot_axis=plt.subplot(len(ps), plots, plots*npot+plots))
+			print pots.pot_evals
 		pots.plot_potential()
 
 test_method(min_mode_plane_min, 1)
+plt.show()
+
+test_method(act_relax, 1)
 plt.show()

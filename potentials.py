@@ -3,8 +3,12 @@ import numpy.linalg as la
 import matplotlib.pyplot as plt
 
 all_potentials = []
+pot_evals = 0
+track_pot_evals = False
 def potential(x):
-	global current_potential
+	global current_potential, pot_evals
+	if track_pot_evals:
+		pot_evals += 1
 	return current_potential(x)
 
 def len_jones(x):
