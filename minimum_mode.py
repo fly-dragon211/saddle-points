@@ -401,7 +401,8 @@ def min_mode_plane_min(axes=[], pot_axis=None):
 		pot_axis.plot(*zip(*path),marker="+",label=lab)
 
 def act_relax(axes, pot_axis=None,
-	delta_x = 0.1):
+	delta_x = 0.2,
+	thresh  = 0.001):
 	
 	local_min = np.zeros(2)
 	x = local_min + (np.random.rand(len(local_min))*2-1) * delta_x
@@ -409,6 +410,7 @@ def act_relax(axes, pot_axis=None,
 	path_pot = [pots.potential(path[-1])]
 	path_for = [la.norm(pots.gradient(path[-1]))]
 	delta_pot = []
+	step_size = [delta_x]
 	for n in range(0,100):
 
 		pots.track_pot_evals = True
@@ -427,29 +429,114 @@ def act_relax(axes, pot_axis=None,
 		path.append(np.array(x))
 		path_pot.append(pots.potential(x))
 		delta_pot.append(path_pot[-1]-path_pot[-2])
+		step_size.append(delta_x)
+		
+		hess = pots.hessian(path[-1])
+		w, v = la.eig(hess)
+		#print w, la.norm(pots.gradient(path[-1])), path[-1]
 
 		if len(path) >= 3:
 			if np.dot(path[-1]-path[-2], path[-2]-path[-3]) < 0:
 				path.append((path[-1]+path[-2])/2)
-				break
+				delta_x /= 2
+				x = path[-1]
+				if la.norm(path[-1]-path[-2]) < thresh:
+					break
 
 		#if path_for[-1] < path_for[-2]:
 		#	break
 
 	if len(axes) > 0:
 		axes[0].plot(path_pot)
+		axes[0].set_ylabel("potential")
 	if len(axes) > 1:
 		axes[1].plot(path_for)
+		axes[1].set_ylabel("force")
 	if len(axes) > 2:
 		axes[2].plot(delta_pot)
+		axes[2].set_ylabel("delta pot")
+	if len(axes) > 3:
+		axes[3].plot(step_size)
+		axes[3].set_ylabel("step size")
 
 	if pot_axis != None:
 		pot_axis.plot(*zip(*path), marker="+")
 
+def sort_by_eig(wv1, wv2):
+	if wv1[0] < wv2[0]:
+		return -1
+	else:
+		return 1
+
+def rfo(axes, pot_axis, 
+	dx_max=0.1):
+
+	path = []
+	grads = []
+	pot_path = []
+	step_size = []
+
+	x = np.zeros(2)
+	for n_step in range(0,100):
+		pots.track_pot_evals = True
+
+		hess = pots.hessian(x)
+		g    = pots.gradient(x)
+
+		w, v = la.eig(hess)
+		to_sort = []
+		for i in range(0,len(w)):
+			to_sort.append([w[i],v[i]])
+		to_sort.sort(sort_by_eig)
+		w, v = zip(*to_sort)
+
+		gi   = np.matmul(v,g)
+
+		# Check decomposition of g
+		g_re = np.zeros(2)
+		for i in range(0, len(gi)):
+			g_re += gi[i]*v[i]
+		if la.norm(g-g_re) > 0.01:
+			print "ERROR! g != g_re!"
+			print g
+			print g_re
+
+		dx = np.zeros(len(x))
+		for i in range(0,len(gi)):
+			d = 1
+			if i == 0:
+				d = -1
+			lmg = 0.5 * d * (abs(w[i]) + np.sqrt(w[i]**2 + 4 * gi[i]**2))
+			dx += -gi[i]*v[i]/lmg
+		
+		if la.norm(dx) > dx_max:
+			dx = dx_max*dx/la.norm(dx)
+		x += dx
+
+		pots.track_pot_evals = False
+
+		path.append(np.array(x))
+		grads.append(la.norm(pots.gradient(x)))
+		pot_path.append(pots.potential(x))
+		step_size.append(la.norm(dx))
+
+	if len(axes) > 0:
+		axes[0].plot(grads)
+
+	if len(axes) > 1:
+		axes[1].plot(pot_path)
+
+	if len(axes) > 2:
+		axes[2].plot(step_size)
+
+	if pot_axis != None:
+		pot_axis.plot(*zip(*path), marker="+")
+
+
 def test_method(method, repeats):
 
 	ps = pots.all_potentials
-	plots = 4
+	plots = 5
 	for npot in range(0,len(ps)):
 		pots.current_potential = ps[npot]
 		axes = [plt.subplot(len(ps), plots, plots*npot+i+1) for i in range(0,plots-1)]
@@ -459,8 +546,5 @@ def test_method(method, repeats):
 			print pots.pot_evals
 		pots.plot_potential()
 
-test_method(min_mode_plane_min, 1)
-plt.show()
-
-test_method(act_relax, 1)
+test_method(rfo, 1)
 plt.show()

@@ -112,5 +112,5 @@ def log_scale():
 		return True
 	return False
 	
-EPS = 0.01
+EPS = 0.001
 current_potential = pot_eggbox
