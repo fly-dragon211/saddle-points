@@ -279,6 +279,33 @@ def simple_climb_line_min():
 				dx_scale /= SCALE_FACT
 	return path
 
+def min_curve_interp_climb():
+	path = [np.zeros(2)]
+	x = np.zeros(2) + 0.01*(np.random.rand(2)*2-1)
+	dx_scale = 1.0
+	for step_index in range(0,200):
+
+		f  = -grad(x)
+
+		if la.norm(f) < GRAD_THR:
+			break
+
+		n = x/la.norm(x)
+		fpara = np.dot(f,n)*n
+		fperp = f - fpara
+
+		dx = fperp - fpara
+		x += dx_scale*DX_MAX*dx/la.norm(dx)
+		x = line_minimize(x, fperp)
+
+		path.append(np.array(x))
+
+		if len(path) > 3:
+			if np.dot(path[-1]-path[-2],path[-2]-path[-3]) < 0:
+				dx_scale /= SCALE_FACT
+	return path
+	
+
 def rfo():
 	path = []
 	x = np.zeros(2) + DX_MAX*(np.random.rand(2)*2-1)
@@ -406,8 +433,11 @@ def opt_param():
 
 def plot_method(repeats=100):
 
+	spx = 3
+	spy = 3
+
 	global pot_evals, pot_evals_line_min
-	plt.subplot(231)
+	plt.subplot(spy, spx, 1)
 	plot_potential()
 
 	for n in range(0,repeats):
@@ -425,29 +455,29 @@ def plot_method(repeats=100):
 		print "Hessian eigvals : ", la.eig(hess(path[-1]))[0]
 		print "Gradient        : ", grad(path[-1])
 
-		plt.subplot(231)
+		plt.subplot(spy, spx, 1)
 		plt.plot(*zip(*path), marker="+")
 
 		eigs = [min(la.eig(hess(p))[0]) for p in path]
-		plt.subplot(232)
+		plt.subplot(spy, spx, 2)
 		plt.plot(eigs)
 		plt.axhline(0, color="red")
 		plt.xlabel("Iteration")
 		plt.ylabel("Min eigenvalue")
 
 		ss = [la.norm(path[i]-path[i-1]) for i in range(1,len(path))]
-		plt.subplot(233)
+		plt.subplot(spy, spx, 3)
 		plt.plot(ss)
 		plt.xlabel("Iteration")
 		plt.ylabel("Step size")
 
 		grads = [la.norm(grad(p)) for p in path]
-		plt.subplot(234)
+		plt.subplot(spy, spx, 4)
 		plt.plot(grads)
 		plt.xlabel("Iteration")
 		plt.ylabel("|grad|")
 
-		plt.subplot(235)
+		plt.subplot(spy, spx, 5)
 		pots = [pot(p) for p in path]
 		plt.xlabel("Iteration")
 		plt.ylabel("Potential")
@@ -456,11 +486,18 @@ def plot_method(repeats=100):
 		path_length = [0]
 		for i in range(1, len(path)):
 			path_length.append(path_length[-1]+la.norm(path[i]-path[i-1]))
-		plt.subplot(236)
+		plt.subplot(spy, spx, 6)
 		plt.xlabel("Cumulative path length")
 		plt.ylabel("Potential")
 		plt.plot(path_length, pots)
 
+		origin_dist = [la.norm(p) for p in path]
+		plt.subplot(spy, spx, 7)
+		plt.plot(origin_dist, pots, linestyle="none", marker="+")
+		xs = np.linspace(min(origin_dist)+10e-6, max(origin_dist)-10e-6, 100)
+		ys = interp_new(xs, origin_dist, pots)
+		plt.plot(xs, ys)
+
 	plt.show()
 
-plot_method()
+plot_method(repeats=10)
