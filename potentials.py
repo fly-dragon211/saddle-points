@@ -31,6 +31,11 @@ def pot_eggbox(x):
         return np.sin((x[0]-0.5)*np.pi)*np.cos(x[1]*np.pi)
 all_potentials.append(pot_eggbox)
 
+def pot_eggbox_exact_hessian(x):
+	xx = -np.pi*np.pi*np.sin((x[0]-0.5)*np.pi)*np.cos(x[1]*np.pi)
+	xy = -np.pi*np.pi*np.cos((x[0]-0.5)*np.pi)*np.sin(x[1]*np.pi)
+	return np.array([[xx,xy],[xy,xx]])
+
 def pot_eggbox_twisted(x):
 	t    = la.norm(x)
 	c, s = np.cos(t), np.sin(t)
@@ -81,13 +86,14 @@ def hessian(x):
                         ip = np.zeros(len(x))
                         jp = np.zeros(len(x))
                         ip[i] = EPS
-                        jp[i] = EPS
+                        jp[j] = EPS
                         hij  = potential(x+ip+jp)
                         hij -= potential(x+ip-jp)
                         hij -= potential(x-ip+jp)
                         hij += potential(x-ip-jp)
                         hij /= 4*EPS*EPS
                         ret[i][j] = hij
+	return ret
         return 0.5*(ret + np.transpose(ret))
 
 def min_mode(x):
@@ -111,6 +117,14 @@ def log_scale():
 	if current_potential in [pot_square_lj, pot_square_lj_twisted]:
 		return True
 	return False
-	
+
 EPS = 0.001
+
+# Test eggbox hessian
 current_potential = pot_eggbox
+for n in range(0,5):
+	x = np.random.rand(2)
+	dh = hessian(x) - pot_eggbox_exact_hessian(x)
+	if la.norm(dh) > 0.001:
+		print "Error, hessian broken!"
+		quit()

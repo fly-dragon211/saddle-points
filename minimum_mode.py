@@ -298,40 +298,6 @@ def min_mode_dimer(x, guess, delta_x=0.01, delta_theta=0.01):
 		n = np.matmul(rots, ns)
 		print n, la.det(rots), la.det(rot)
 
-def min_mode_simple(x, guess, delta_x=0.01, delta_theta=0.1):
-	x = np.array(x)
-	guess = np.array(guess)
-	n = guess/la.norm(guess)
-	while True:
-		print n
-		xt = x + delta_x*n
-		g = pots.gradient(xt)
-		xt -= delta_x * delta_theta * g/la.norm(g)
-		nn = xt - x
-		nn /= la.norm(nn)
-		da = np.arccos(np.dot(nn, n))
-		n = nn
-		if abs(da) < 0.1*np.pi/180:
-			print da*180/np.pi
-			break
-
-def min_mode_lanczos(x, guess):
-	
-	DEL_X = 0.01
-	r = [guess]
-	b = [la.norm(r[0])]
-	q = [np.zeros(len(r[0]))]
-	u = []
-	a = []
-
-	for k in range(1, 10):
-		q.append(r[-1]/b[-1])
-		u.append((pots.gradient(x + DEL_X*q[-1]) - pots.gradient(x))/DEL_X)
-		r.append(u[-1] - b[-1]*q[-2])
-		a.append(np.dot(q[-1], r[-1]))
-		r[-1] = r[-1] - a[-1]*q[-1]
-		b.append(la.norm(r[-1]))
-		print q[-1]
 
 
 def min_mode_plane_min(axes=[], pot_axis=None):
@@ -475,8 +441,9 @@ def rfo(axes, pot_axis,
 	grads = []
 	pot_path = []
 	step_size = []
+	evals = []
 
-	x = np.zeros(2)
+	x = np.zeros(2) + dx_max * (np.random.rand(2)*2-1)
 	for n_step in range(0,100):
 		pots.track_pot_evals = True
 
@@ -501,17 +468,21 @@ def rfo(axes, pot_axis,
 			print g
 			print g_re
 
-		dx = np.zeros(len(x))
-		for i in range(0,len(gi)):
-			d = 1
-			if i == 0:
-				d = -1
-			lmg = 0.5 * d * (abs(w[i]) + np.sqrt(w[i]**2 + 4 * gi[i]**2))
-			dx += -gi[i]*v[i]/lmg
-		
-		if la.norm(dx) > dx_max:
-			dx = dx_max*dx/la.norm(dx)
-		x += dx
+		if w[0] > 0:
+			dx = dx_max*x/la.norm(x)
+			x += dx
+		else:
+			dx = np.zeros(len(x))
+			for i in range(0,len(gi)):
+				d = 1
+				if i == 0:
+					d = -1
+				lmg = 0.5 * d * (abs(w[i]) + np.sqrt(w[i]**2 + 4 * gi[i]**2))
+				dx += -gi[i]*v[i]/lmg
+			
+			if la.norm(dx) > dx_max:
+				dx = dx_max*dx/la.norm(dx)
+			x += dx
 
 		pots.track_pot_evals = False
 
@@ -519,19 +490,131 @@ def rfo(axes, pot_axis,
 		grads.append(la.norm(pots.gradient(x)))
 		pot_path.append(pots.potential(x))
 		step_size.append(la.norm(dx))
+		evals.append(w[0])
 
 	if len(axes) > 0:
-		axes[0].plot(grads)
+		axes[0].plot(evals)
+		axes[0].set_ylabel("min eval")
 
 	if len(axes) > 1:
 		axes[1].plot(pot_path)
+		axes[1].set_ylabel("potential")
 
 	if len(axes) > 2:
 		axes[2].plot(step_size)
+		axes[2].set_ylabel("step size")
 
 	if pot_axis != None:
 		pot_axis.plot(*zip(*path), marker="+")
 
+def rfo_gamma(axes, pot_axis, gamma=0.1, dx_max=0.1):
+	
+	x = np.zeros(2) + dx_max * (np.random.rand(2)*2-1)
+	path = []
+	eigs = []
+	evals = []
+
+	for n in range(0,100):
+		pots.track_pot_evals = True
+		
+		# Get graident, hessian and
+		# eigenvals/vecs of hessian
+		g = pots.gradient(x)
+		h = pots.hessian(x)
+		l, v = la.eig(h)
+
+		# Identify smallest eigenvalue
+		i_min = 0
+		l_min = np.inf
+		for i in range(0, len(l)):
+			if l[i] < l_min:
+				i_min = i
+				l_min = l[i]
+
+		# Decompose g into components
+		# along v
+		gi = np.matmul(v,g)
+
+		# Check decomposition of g
+		g_re = np.zeros(2)
+		for i in range(0, len(gi)):
+			g_re += gi[i]*v[i]
+		if la.norm(g-g_re)/la.norm(g) > 0.00001:
+			print "ERROR! g != g_re!"
+			print g
+			print g_re
+
+		# Evaluate step
+		if l[i_min] > 0:
+			dx = dx_max * x/la.norm(x)
+		else:
+			dx = np.zeros(len(x))
+			for i in range(0, len(l)):
+				sgn = 1
+				if i == i_min:
+					sgn = -1;
+				dx += sgn*gi[i]*v[i]/(l[i] - gamma)
+
+			# Ensure step isn't larger than dx_max
+			if la.norm(dx) > dx_max:
+				dx = dx_max * dx/la.norm(dx)
+
+		pots.track_pot_evals = False
+
+		path.append(np.array(x))
+		eigs.append(v[i_min])
+		evals.append(l[i_min])
+
+		x += dx
+
+	if len(axes) > 0:
+		axes[0].plot(evals)
+		axes[0].set_ylabel("min eigenvalue")
+
+	if pot_axis != None:
+		pot_axis.plot(*zip(*path), marker="+")
+		for i in range(0,len(path)):
+			pot_axis.plot(*zip(*[path[i], path[i]+0.01*eigs[i]/la.norm(eigs[i])]), color="green")
+
+def plot_min_modes(axes, pot_axis):
+	pts = []
+	mms = []
+	grs = []
+	for x in np.linspace(-2,2,11):
+		for y in np.linspace(-2,2,11):
+			g = pots.gradient([x,y])
+			h = pots.hessian([x,y])
+			l, v = la.eig(h)
+
+			# Identify smallest eigenvalue
+			i_min = 0
+			l_min = np.inf
+			for i in range(0, len(l)):
+				if l[i] < l_min:
+					i_min = i
+					l_min = l[i]
+
+			pts.append(np.array([x,y]))
+			mms.append(v[i_min]/la.norm(v[i_min]))
+			grs.append(g/la.norm(g))
+	
+	for i in range(0,len(pts)):
+		pot_axis.plot(*zip(*[pts[i], pts[i]+0.1*mms[i]]),color="green")
+		pot_axis.plot(*zip(*[pts[i], pts[i]+0.1*grs[i]]),color="red")
+
+def max_test(axes, pot_axis):
+	
+	path = []
+
+	x = np.zeros(2)
+	for n in range(0,10000):
+		dx = 0.1*(np.random.rand(2)*2-1)
+		if pots.potential(x+dx) > pots.potential(x):
+			x += dx
+			path.append(np.array(x))
+	
+	if pot_axis != None:
+		pot_axis.plot(*zip(*path), marker="+")
 
 def test_method(method, repeats):
 
