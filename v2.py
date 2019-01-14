@@ -3,7 +3,7 @@ import numpy.linalg as la
 import matplotlib.pyplot as plt
 
 EPS        = 0.0001
-GRAD_THR   = 0.01
+GRAD_THR   = 0.1
 DX_MAX     = 0.1
 SCALE_FACT = 2
 
@@ -115,6 +115,10 @@ def simple_climb():
 
 def interp_new(interp_to, xs, fs):
 
+	if len(xs) != len(fs):
+		print "Error in interp_new: len(xs) != len(fs)."
+		quit()
+
         M = len(xs)
 
         m = np.zeros((4*(M-1), 4*(M-1)))
@@ -129,6 +133,7 @@ def interp_new(interp_to, xs, fs):
                 x2 = xs[i+1]
                 f1 = fs[i]
                 f2 = fs[i+1]
+
                 # Passes through x1, f1 and x2, f2
                 b[n] = f1
                 b[n+1] = f2
@@ -177,7 +182,7 @@ def interp_new(interp_to, xs, fs):
         b[3] = 0
         m[3][(M-2)*4+3] = 1
 
-        minv = la.inv(m)
+	minv = la.inv(m)
         coeff = np.matmul(minv, b)
 
 	ret = []
@@ -201,6 +206,23 @@ def interp_new(interp_to, xs, fs):
 		c = coeff[ci*4:(ci+1)*4]
 		ret.append(c[0] + c[1]*x + c[2]*x**2 + c[3]*x**3)
 	return np.array(ret)
+
+def interp(xs, x1, x2, f1, f2, g1, g2):
+        m = np.array([
+        [1,x1,x1**2,x1**3],
+        [1,x2,x2**2,x2**3],
+        [0,1,2*x1,3*x1**2],
+        [0,1,2*x2,3*x2**2]
+        ])
+        try:
+                minv = la.inv(m)
+        except:
+                print "Singular matrix!"
+                print m
+                quit()
+        b = [f1,f2,g1,g2]
+        a = np.matmul(minv,b)
+        return [a[0] + a[1]*x + a[2]*x**2 + a[3]*x**3 for x in xs]
 
 pot_evals_line_min = 0
 def line_minimize(x_start, direction):
@@ -269,42 +291,21 @@ def simple_climb_line_min():
 		fperp = f - fpara
 
 		dx = fperp - fpara
+		dx /= la.norm(dx)
+		if len(path) > 2:
+			if np.dot(path[-1]-path[-2], dx) < 0:
+				dx_scale /= SCALE_FACT
+
 		x += dx_scale*DX_MAX*dx/la.norm(dx)
 		x = line_minimize(x, fperp)
 
 		path.append(np.array(x))
 
-		if len(path) > 3:
-			if np.dot(path[-1]-path[-2],path[-2]-path[-3]) < 0:
-				dx_scale /= SCALE_FACT
+		if False:
+			if len(path) > 3:
+				if np.dot(path[-1]-path[-2],path[-2]-path[-3]) < 0:
+					dx_scale /= SCALE_FACT
 	return path
-
-def min_curve_interp_climb():
-	path = [np.zeros(2)]
-	x = np.zeros(2) + 0.01*(np.random.rand(2)*2-1)
-	dx_scale = 1.0
-	for step_index in range(0,200):
-
-		f  = -grad(x)
-
-		if la.norm(f) < GRAD_THR:
-			break
-
-		n = x/la.norm(x)
-		fpara = np.dot(f,n)*n
-		fperp = f - fpara
-
-		dx = fperp - fpara
-		x += dx_scale*DX_MAX*dx/la.norm(dx)
-		x = line_minimize(x, fperp)
-
-		path.append(np.array(x))
-
-		if len(path) > 3:
-			if np.dot(path[-1]-path[-2],path[-2]-path[-3]) < 0:
-				dx_scale /= SCALE_FACT
-	return path
-	
 
 def rfo():
 	path = []
@@ -453,7 +454,9 @@ def plot_method(repeats=100):
 		print "    Line min pe : ", pot_evals_line_min
 		print "Final coord     : ", path[-1]
 		print "Hessian eigvals : ", la.eig(hess(path[-1]))[0]
-		print "Gradient        : ", grad(path[-1])
+		sfstring = "Fail"
+		if la.norm(grad(path[-1])) < GRAD_THR: sfstring = "Success"
+		print "Gradient        : ", grad(path[-1]), sfstring
 
 		plt.subplot(spy, spx, 1)
 		plt.plot(*zip(*path), marker="+")
@@ -470,6 +473,7 @@ def plot_method(repeats=100):
 		plt.plot(ss)
 		plt.xlabel("Iteration")
 		plt.ylabel("Step size")
+		plt.axhline(DX_MAX, color="red")
 
 		grads = [la.norm(grad(p)) for p in path]
 		plt.subplot(spy, spx, 4)
@@ -483,21 +487,20 @@ def plot_method(repeats=100):
 		plt.ylabel("Potential")
 		plt.plot(pots)
 
-		path_length = [0]
-		for i in range(1, len(path)):
-			path_length.append(path_length[-1]+la.norm(path[i]-path[i-1]))
-		plt.subplot(spy, spx, 6)
-		plt.xlabel("Cumulative path length")
-		plt.ylabel("Potential")
-		plt.plot(path_length, pots)
-
 		origin_dist = [la.norm(p) for p in path]
+		plt.subplot(spy, spx, 6)
+		plt.xlabel("Iteration")
+		plt.ylabel("Distance from origin")
+		plt.plot(origin_dist)
+
 		plt.subplot(spy, spx, 7)
 		plt.plot(origin_dist, pots, linestyle="none", marker="+")
-		xs = np.linspace(min(origin_dist)+10e-6, max(origin_dist)-10e-6, 100)
-		ys = interp_new(xs, origin_dist, pots)
-		plt.plot(xs, ys)
+		plt.xlabel("Distance from origin")
+		plt.ylabel("Potential")
+		#xs = np.linspace(min(origin_dist)+10e-6, max(origin_dist)-10e-6, 100)
+		#ys = interp_new(xs, origin_dist, pots)
+		#plt.plot(xs, ys)
 
 	plt.show()
 
-plot_method(repeats=10)
+plot_method(repeats=100)
