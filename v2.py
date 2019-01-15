@@ -412,7 +412,7 @@ def opt_param():
 	xs  = np.linspace(1,10,100)
 	ys  = []
 	dys = []
-	for SCALE_FACT in xs:
+for SCALE_FACT in xs:
 		pevs = []
 		plen = []
 		for n in range(0,10):
