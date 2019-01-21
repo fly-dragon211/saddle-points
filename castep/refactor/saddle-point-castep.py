@@ -4,6 +4,120 @@ import time
 import numpy as np
 import numpy.linalg as la
 
+class parameter:
+
+	def __init__(self, name, value, scale, fixed=False):
+
+		# Create a parameter
+		self.name = name
+		self.value = value
+		self.scale = scale
+		self.fixed = fixed
+
+class cell:
+	def __init__(self, cellfile):
+
+		# Parse a cell from a cellfile
+		self.atoms = []
+		self.lattice_params = [1.0, 1.0, 1.0]
+		self.lattice_angles = [90,  90,  90]
+
+		lines = [l.lower() for l in open(cellfile).read().split("\n")]
+		line_numbers_parsed = []
+		for i, line in enumerate(lines):
+			if "%block" in line:
+				line_numbers_parsed.append(i)
+
+				# Parse lattice_abc block
+				if "lattice_abc" in line:
+					i2 = i+1
+					if len(lines[i2].split()) != 3: 
+						# Skip unit specification
+						line_numbers_parsed.append(i2)
+						i2 += 1
+					self.lattice_params = [float(w) for w in lines[i2].split()]
+					self.lattice_angles = [float(w) for w in lines[i2+1].split()]
+					line_numbers_parsed.extend([i2,i2+1,i2+2])
+
+				# Parse positons_frac block
+				if "positions_frac" in line:
+					i2 = i+1
+					while True:
+						line_numbers_parsed.append(i2)
+						if "%endblock" in lines[i2]: break
+						a,x,y,z = lines[i2].split()
+						self.atoms.append([a,float(x),float(y),float(z)])
+						i2 += 1
+
+		# Extra lines
+		self.extras = []
+		for i in range(0,len(lines)):
+			if i in line_numbers_parsed: continue
+			if len(lines[i].strip()) == 0: continue
+			self.extras.append(lines[i].strip())
+
+		# Nothing fixed by default
+		self.atom_fixed = [False for a in self.atoms]
+		self.lattice_params_fixed = [False, False, False]
+		self.lattice_angles_fixed = [False, False, False]
+
+	def gen_cellfile(self):
+
+		# Generate a cell file for this cell
+		cf  = "%block lattice_abc\n"
+		cf += " ".join([str(a) for a in self.lattice_params])+"\n"
+		cf += " ".join([str(a) for a in self.lattice_angles])+"\n"
+		cf += "%endblock lattice_abc\n\n"
+		cf += "%block positions_frac\n"
+		for a in self.atoms: cf += " ".join([str(i) for i in a])+"\n"
+		cf += "%endblock lattice_abc\n\n"
+		for e in self.extras: cf += e + "\n"
+		return cf.strip()
+
+	def fix_atoms(self,indicies=[]):
+
+		# Fix the atoms at each of the indicies given
+		# (or all atoms if no indicies provided)
+		if len(indicies) == 0: 
+			self.atom_fixed = [True for a in self.atoms]
+			return
+		for i in range(0, len(self.atoms)):
+			if i in indicies: self.atom_fixed[i] = True
+
+	def get_parameters(self):
+		
+		# Get all of the variable parameters in this cell
+		params = []
+		for i in range(0,3):
+			if self.lattice_params_fixed[i]: continue
+			p = parameter("Lattice parameter "+"ABC"[i],
+				      self.lattice_params[i], 1.0)
+			params.append(p)
+
+		for i in range(0,3):
+			if self.lattice_angles_fixed[i]: continue
+			p = parameter("Lattice angle "+"ABC"[i],
+				      self.lattice_angles[i], 90)
+			params.append(p)
+
+		for i, a in enumerate(self.atoms):
+			if self.atom_fixed[i]: continue
+			for ic, c in enumerate(["x","y","z"]):
+				p = parameter("Atom "+str(i)+" ("+a[0]+") fractional "+c+" coordinate",
+					      a[ic+1], 1.0)
+				params.append(p)
+		return params
+
+c = cell(sys.argv[1])
+c.fix_atoms()
+c.lattice_params_fixed = [False, False, True]
+c.lattice_angles_fixed = [True, True, True]
+print c.gen_cellfile()
+for p in c.get_parameters():
+	print p.name
+quit()
+
+
 def parse_cell_for_params(seed):
 	# Parse the castep .cell file line by line
 	# and construct the parameter space
@@ -224,7 +338,7 @@ def act_relax():
 	x = np.array([parameters[n] for n in names])
 	local_minima = np.copy(x)
 
-	for iter_index in range(0,100):
+	for iter_index in range(0,20):
 
 		print "Iteration ", (iter_index+1), " time so far: ", time.time()-initial_time, "s"
 		
