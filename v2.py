@@ -1,11 +1,64 @@
+import os
 import numpy as np
 import numpy.linalg as la
 import matplotlib.pyplot as plt
 
-EPS        = 0.0001
-GRAD_THR   = 0.1
-DX_MAX     = 0.1
+DX_MAX     = 0.02
+EPS        = DX_MAX / 10
+GRAD_THR   = 0.01
 SCALE_FACT = 2
+
+sort_point = None
+def sort_closest(a,b):
+	if la.norm(a[0] - sort_point) < la.norm(b[0] - sort_point):
+		return -1
+	else:
+		return 1
+
+data_real_grid = None
+real_grid_centre = None
+def pot_real_grid(c, direc):
+	global data_real_grid, real_grid_max, real_grid_centre
+
+	if data_real_grid == None:
+		data_real_grid = []
+		e_min = np.inf
+		for f in os.listdir("./real_potentials/"+direc):
+			if not f.endswith(".castep"): continue
+			seed = f[0:-len(".castep")]
+			splt = seed.split("_")
+			if len(splt) != 2: continue
+			fx = float(splt[0])
+			fy = float(splt[1])
+			lines = open("./real_potentials/"+direc+"/"+f).read().split("\n")
+			e = None
+			for l in lines:
+				if "NB" in l:
+					e = float(l.split("=")[1].split("e")[0])
+			if e == None: continue
+			if e < e_min:
+				e_min = e
+				real_grid_centre = np.array([fx,fy])
+			data_real_grid.append([np.array([fx,fy]),e])
+		print "Read "+str(len(data_real_grid))+" points on the potential at "+direc
+
+	c = np.array(c) + real_grid_centre
+
+	p = 4
+	ret = 0
+	renorm = 0
+	for pt in data_real_grid:
+		dis = la.norm(c-pt[0])**p
+		if dis == 0: return pt[1]
+		ret += pt[1] / dis
+		renorm += 1 / dis
+	return ret/renorm
+
+def pot_li_bcc_fcc(c):
+	return pot_real_grid(c,"li_bcc_fcc")
+
+def pot_fe_bcc_fcc(c):
+	return pot_real_grid(c, "fe_bcc_fcc")
 
 def pot_egg(c):
 	x = c[0]
@@ -70,11 +123,13 @@ def hess(c):
 
 def plot_potential():
         RANGE = 2
-        RESOL = 50
+        RESOL = 100
         x   = np.linspace(-RANGE,RANGE,RESOL)
         y   = np.linspace(-RANGE,RANGE,RESOL)
         z   = []
         all_vals = []
+	max_val = -np.inf
+	min_val = np.inf
         for yi in y:
                 row = []
                 for xi in x:
@@ -82,10 +137,14 @@ def plot_potential():
                         val = pot(p)
                         row.append(val)
                         all_vals.append(val)
+			if val > max_val : max_val = val
+			if val < min_val : min_val = val
                 z.append(row)
+	z = ((z-min_val)/(max_val-min_val))**(0.5)
         x,y = np.meshgrid(x,y)
-        plt.contour(x,y,z,cmap="seismic")
-        plt.imshow(z,cmap="seismic",extent=(-RANGE,RANGE,-RANGE,RANGE),
+	levels = np.linspace(0,1,30)
+        plt.contour(x,y,z,cmap="seismic",levels=levels)
+        plt.imshow(z,cmap="prism",extent=(-RANGE,RANGE,-RANGE,RANGE),
 		   origin="lower",interpolation="bilinear",alpha=0.2)
 	plt.xlabel("x")
 	plt.ylabel("y")
@@ -183,7 +242,8 @@ def interp_new(interp_to, xs, fs):
         m[3][(M-2)*4+3] = 1
 
 	minv = la.inv(m)
-        coeff = np.matmul(minv, b)
+	coeff = np.dot(minv, b)
+        #coeff = np.matmul(minv, b)
 
 	ret = []
 	for x in interp_to:
@@ -254,30 +314,18 @@ def line_minimize(x_start, direction):
                 else:
                         break
 
-        success = True
-        try:
-		xs = np.linspace(min(mapped_del)+step/100, max(mapped_del)-step/100, 100)
-		ys = interp_new(xs, mapped_del, mapped_pot)
-		return x_start + d*xs[list(ys).index(min(ys))]
-
-		plt.plot(mapped_del, mapped_pot, marker="+", linestyle="none")
-		plt.plot(xs,ys)
-		plt.show()
-                par, covar = curve_fit(line_min_fit, mapped_del, mapped_pot, p0=[min(mapped_pot), 0, 1])
-		plt.plot(mapped_del, line_min_fit(mapped_del, *par))
-        except:
-                success = False
-		print "Line min failed"
-
-        if success:
-                return par[1]*d + x_start
-        else:
-                return mapped_pos[mapped_pot.index(min(mapped_pot))]
+	xs = np.linspace(min(mapped_del)+step/100, max(mapped_del)-step/100, 100)
+	ys = interp_new(xs, mapped_del, mapped_pot)
+	return x_start + d*xs[list(ys).index(min(ys))]
 
 
 def simple_climb_line_min():
 	path = [np.zeros(2)]
-	x = np.zeros(2) + 0.01*(np.random.rand(2)*2-1)
+	x = np.zeros(2)
+	dx_init = np.random.rand(2)*2-1
+	dx_init = DX_MAX * dx_init / la.norm(dx_init)
+	x = x + dx_init
+	path.append(x.copy())
 	dx_scale = 1.0
 	for step_index in range(0,200):
 
@@ -292,19 +340,38 @@ def simple_climb_line_min():
 
 		dx = fperp - fpara
 		dx /= la.norm(dx)
+
 		if len(path) > 2:
 			if np.dot(path[-1]-path[-2], dx) < 0:
 				dx_scale /= SCALE_FACT
 
-		x += dx_scale*DX_MAX*dx/la.norm(dx)
-		x = line_minimize(x, fperp)
+		dx /= la.norm(dx)
+		dx *= dx_scale * DX_MAX
+
+		x += dx
+		#x = line_minimize(x, fperp)
 
 		path.append(np.array(x))
+	return path
 
-		if False:
-			if len(path) > 3:
-				if np.dot(path[-1]-path[-2],path[-2]-path[-3]) < 0:
-					dx_scale /= SCALE_FACT
+def slither():
+	path = [np.zeros(2)]
+	rand = np.random.rand(2)*2-1
+	rand = DX_MAX * rand / la.norm(rand)
+	path.append(path[-1].copy() + rand)
+
+	for step_index in range(0, 100):
+		f = - grad(path[-1].copy())
+		if la.norm(f) < GRAD_THR: break
+		n = path[-1].copy()
+		n /= la.norm(n)
+		fpara = np.dot(f,n)*n
+		fperp = f - fpara
+		dx = fperp - fpara
+		dx = DX_MAX * dx / la.norm(dx)
+		if la.norm(dx) - EPS > DX_MAX: print "Error |dx| > DX_MAX: ", la.norm(dx), " > ", DX_MAX
+		path.append(path[-1].copy() + dx)
+	
 	return path
 
 def rfo():
@@ -375,12 +442,15 @@ def min_mode():
 
 	return path
 
+selected_potential = pot_li_bcc_fcc
 selected_potential = pot_egg
 selected_potential = pot_coulomb
+selected_potential = pot_fe_bcc_fcc
 
 saddle_method = rfo
 saddle_method = min_mode
 saddle_method = simple_climb
+saddle_method = slither
 saddle_method = simple_climb_line_min
 
 def opt_param():
@@ -412,7 +482,7 @@ def opt_param():
 	xs  = np.linspace(1,10,100)
 	ys  = []
 	dys = []
-for SCALE_FACT in xs:
+	for SCALE_FACT in xs:
 		pevs = []
 		plen = []
 		for n in range(0,10):
@@ -503,4 +573,4 @@ def plot_method(repeats=100):
 
 	plt.show()
 
-plot_method(repeats=100)
+plot_method(repeats=1)

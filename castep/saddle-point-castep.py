@@ -187,7 +187,7 @@ def act_relax():
 	global parameters, param_scales, param_fixed, initial_time
 
 	EPS = 0.001
-	step_size = 0.1 * np.sqrt(float(len(parameters)))
+	step_size = 0.3 * np.sqrt(float(len(parameters)))
 
 	div = ""
 	for n in range(0,50): div += "="
