@@ -1,0 +1,362 @@
+ +-------------------------------------------------+
+ |                                                 |
+ |      CCC   AA    SSS  TTTTT  EEEEE  PPPP        |
+ |     C     A  A  S       T    E      P   P       |
+ |     C     AAAA   SS     T    EEE    PPPP        |
+ |     C     A  A     S    T    E      P           |
+ |      CCC  A  A  SSS     T    EEEEE  P           |
+ |                                                 |
+ +-------------------------------------------------+
+ |                                                 |
+ | Welcome to Academic Release CASTEP version 18.1 |          
+ | Ab Initio Total Energy Program                  |
+ |                                                 |
+ | Authors:                                        |
+ | M. Segall, M. Probert, C. Pickard, P. Hasnip,   |
+ | S. Clark, K. Refson, J. R. Yates, M. Payne      |
+ |                                                 |
+ | Contributors:                                   |
+ | P. Lindan, P. Haynes, J. White, V. Milman,      |
+ | N. Govind, M. Gibson, P. Tulip, V. Cocula,      |
+ | B. Montanari, D. Quigley, M. Glover,            |
+ | L. Bernasconi, A. Perlov, M. Plummer,           |
+ | E. McNellis, J. Meyer, J. Gale, D. Jochym       |
+ | J. Aarons, B. Walker, R. Gillen, D. Jones       |
+ | T. Green, I. J. Bush, C. J. Armstrong,          |
+ | E. J. Higgins, E. L. Brown, M. S. McFly,        |
+ | J. Wilkins, B-C. Shih, P. J. P. Byrne           |
+ |                                                 |
+ | Copyright (c) 2000 - 2017                       |
+ |                                                 |
+ |     Distributed under the terms of an           |
+ |     Agreement between the United Kingdom        |
+ |     Car-Parrinello (UKCP) Consortium,           |
+ |     Daresbury Laboratory and Accelrys, Inc.     |
+ |                                                 |
+ | Please cite                                     |
+ |                                                 |
+ |     "First principles methods using CASTEP"     |
+ |                                                 |
+ |         Zeitschrift fuer Kristallographie       |
+ |           220(5-6) pp. 567-570 (2005)           |
+ |                                                 |
+ | S. J. Clark, M. D. Segall, C. J. Pickard,       |
+ | P. J. Hasnip, M. J. Probert, K. Refson,         |
+ | M. C. Payne                                     |
+ |                                                 |
+ |       in all publications arising from          |
+ |              your use of CASTEP                 |
+ |                                                 |
+ +-------------------------------------------------+
+ 
+ 
+ Compiled for linux_x86_64_ifort17 on Mon, 11 Jun 2018 16:19:36 +0100
+ from code version 70483bd0ad64+  Sun, 10 Dec 2017 12:18:29 +0000
+ Compiler: Intel Fortran 17.0.4.196; Optimisation: fast
+ MATHLIBS: Intel MKL(2017.0.3) (LAPACK version 3.7.0)
+ FFT Lib : default
+ Fundamental constants values: CODATA 2014
+ 
+ Run started: Mon, 21 Jan 2019 11:38:55 +0000
+ 
+ Atomic calculation performed for Fe: 1s2 2s2 2p6 3s2 3p6 3d6 4s2
+ 
+ Converged in 100 iterations to an ae energy of -34563.484 eV
+ 
+ 
+ Pseudo atomic calculation performed for Fe 3d6 4s2
+ 
+ Converged in 30 iterations to a total energy of -848.3436 eV
+ 
+ Calculation parallelised over 32 processes.
+ Data is distributed by G-vector(2-way) and k-point(16-way)
+
+ ************************************ Title ************************************
+ 
+
+ ***************************** General Parameters ******************************
+  
+ output verbosity                               : normal  (1)
+ write checkpoint data to                       : 1.475_1.325.check
+ type of calculation                            : single point energy
+ stress calculation                             : off
+ density difference calculation                 : off
+ electron localisation func (ELF) calculation   : off
+ Hirshfeld analysis                             : off
+ unlimited duration calculation
+ timing information                             : on
+ memory usage estimate                          : on
+ write extra ouput files                        : off
+ write final potential to formatted file        : off
+ write final density to formatted file          : off
+ write BibTeX reference list                    : off
+ write OTFG pseudopotential files               : off
+ write electrostatic potential file             : off
+ write bands file                               : off
+ checkpoint writing                             : off
+  
+ output         length unit                     : A
+ output           mass unit                     : amu
+ output           time unit                     : ps
+ output         charge unit                     : e
+ output           spin unit                     : hbar/2
+ output         energy unit                     : eV
+ output          force unit                     : eV/A
+ output       velocity unit                     : A/ps
+ output       pressure unit                     : GPa
+ output     inv_length unit                     : 1/A
+ output      frequency unit                     : cm-1
+ output force constant unit                     : eV/A**2
+ output         volume unit                     : A**3
+ output   IR intensity unit                     : (D/A)**2/amu
+ output         dipole unit                     : D
+ output         efield unit                     : eV/A/e
+ output        entropy unit                     : J/mol/K
+  
+ wavefunctions paging                           : none
+ random number generator seed                   : randomised (113855545)
+ data distribution                              : optimal for this architecture
+ optimization strategy                          : balance speed and memory
+
+ *********************** Exchange-Correlation Parameters ***********************
+  
+ using functional                               : Local Density Approximation
+ relativistic treatment                         : Koelling-Harmon
+ DFT+D: Semi-empirical dispersion correction    : off
+
+ ************************* Pseudopotential Parameters **************************
+  
+ pseudopotential representation                 : reciprocal space
+ <beta|phi> representation                      : reciprocal space
+ spin-orbit coupling                            : off
+
+ **************************** Basis Set Parameters *****************************
+  
+ plane wave basis set cut-off                   :   500.0000   eV
+ size of standard grid                          :     1.7500
+ size of   fine   gmax                          :    20.0476   1/A
+ finite basis set correction                    : none
+
+ **************************** Electronic Parameters ****************************
+  
+ number of  electrons                           :  16.00    
+ net charge of system                           :  0.000    
+ treating system as non-spin-polarized
+ number of bands                                :         18
+
+ ********************* Electronic Minimization Parameters **********************
+  
+ Method: Treating system as metallic with density mixing treatment of electrons,
+         and number of  SD  steps               :          1
+         and number of  CG  steps               :          4
+  
+ total energy / atom convergence tol.           : 0.1000E-04   eV
+ eigen-energy convergence tolerance             : 0.1000E-05   eV
+ max force / atom convergence tol.              : ignored
+ convergence tolerance window                   :          3   cycles
+ max. number of SCF cycles                      :         30
+ number of fixed-spin iterations                :         10
+ smearing scheme                                : Gaussian
+ smearing width                                 : 0.2000       eV
+ Fermi energy convergence tolerance             : 0.2721E-13   eV
+ periodic dipole correction                     : NONE
+
+ ************************** Density Mixing Parameters **************************
+  
+ density-mixing scheme                          : Broyden
+ max. length of mixing history                  :         20
+ charge density mixing amplitude                : 0.8000    
+ cut-off energy for mixing                      :  500.0       eV
+
+ *********************** Population Analysis Parameters ************************
+  
+ Population analysis with cutoff                :  3.000       A
+ Population analysis output                     : summary and pdos components
+
+ *******************************************************************************
+  
+ 
+                           -------------------------------
+                                      Unit Cell
+                           -------------------------------
+        Real Lattice(A)                      Reciprocal Lattice(1/A)
+     2.1585025     0.0000000     0.0000000        2.910900196   0.000000000   0.000000000
+     0.0000000     3.1837912     0.0000000        0.000000000   1.973491658   0.000000000
+     0.0000000     0.0000000     2.8600158        0.000000000   0.000000000   2.196905808
+ 
+                       Lattice parameters(A)       Cell Angles
+                    a =      2.158502          alpha =   90.000000
+                    b =      3.183791          beta  =   90.000000
+                    c =      2.860016          gamma =   90.000000
+ 
+                       Current cell volume =            19.654661       A**3
+                                   density =             5.682622   AMU/A**3
+                                           =             9.436215     g/cm^3
+ 
+                           -------------------------------
+                                     Cell Contents
+                           -------------------------------
+                         Total number of ions in cell =    2
+                      Total number of species in cell =    1
+                        Max number of any one species =    2
+ 
+            xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+            x  Element    Atom        Fractional coordinates of atoms  x
+            x            Number           u          v          w      x
+            x----------------------------------------------------------x
+            x  Fe           1         0.000000   0.000000   0.000000   x 
+            x  Fe           2         0.500000   0.500000   0.500000   x 
+            xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ 
+ 
+                         No user defined ionic velocities
+ 
+                           -------------------------------
+                                   Details of Species
+                           -------------------------------
+ 
+                               Mass of species in AMU
+                                    Fe   55.8450000
+ 
+                          Electric Quadrupole Moment (Barn)
+                                    Fe    0.1600000 Isotope 57
+ 
+                          Files used for pseudopotentials:
+                                    Fe 3|2.4|2.4|1.0|8|9|10|40:41:32U2U2(qc=5.5)
+ 
+                           -------------------------------
+                              k-Points For BZ Sampling
+                           -------------------------------
+                       MP grid size for SCF calculation is 10  7  7
+                            with an offset of   0.000  0.000  0.000
+                       Number of kpoints used =            80
+ 
+                           -------------------------------
+                               Symmetry and Constraints
+                           -------------------------------
+ 
+                      Cell is a supercell containing 2 primitive cells
+                      Maximum deviation from symmetry = 0.940008E-15     ANG
+ 
+                      Number of symmetry operations   =          16
+                      Number of ionic constraints     =           3
+                      Point group of crystal =     8: D2h, mmm, 2/m 2/m 2/m
+                      Space group of crystal =    71: Immm, -I 2 2
+ 
+             Set iprint > 1 for details on symmetry rotations/translations
+ 
+                         Centre of mass is constrained
+             Set iprint > 1 for details of linear ionic constraints
+ 
+                         Number of cell constraints= 3
+                         Cell constraints are:  1 2 3 0 0 0
+ 
+                         External pressure/stress (GPa)
+                          0.00000   0.00000   0.00000
+                                    0.00000   0.00000
+                                              0.00000
+  
++---------------- MEMORY AND SCRATCH DISK ESTIMATES PER PROCESS --------------+
+|                                                     Memory          Disk    |
+| Baseline code, static data and system overhead      387.0 MB         0.0 MB |
+| BLAS internal memory storage                          0.0 MB         0.0 MB |
+| Model and support data                               17.0 MB         5.0 MB |
+| Electronic energy minimisation requirements           2.2 MB         0.0 MB |
+| Force calculation requirements                        0.6 MB         0.0 MB |
+|                                               ----------------------------- |
+| Approx. total storage required per process          406.1 MB         5.0 MB |
+|                                                                             |
+| Requirements will fluctuate during execution and may exceed these estimates |
++-----------------------------------------------------------------------------+
+Calculating total energy with cut-off of  500.000 eV.
+------------------------------------------------------------------------ <-- SCF
+SCF loop      Energy           Fermi           Energy gain       Timer   <-- SCF
+                               energy          per atom          (sec)   <-- SCF
+------------------------------------------------------------------------ <-- SCF
+Initial  -1.36301374E+003  0.00000000E+000                         5.40  <-- SCF
+      1  -1.69137143E+003  8.53824572E+000   1.64178849E+002       5.57  <-- SCF
+      2  -1.71542675E+003  7.20754302E+000   1.20276588E+001       5.69  <-- SCF
+      3  -1.71654527E+003  7.26177786E+000   5.59259680E-001       5.82  <-- SCF
+      4  -1.71663883E+003  5.83818085E+000   4.67808758E-002       5.98  <-- SCF
+      5  -1.71633417E+003  6.67556726E+000  -1.52330240E-001       6.13  <-- SCF
+      6  -1.71633387E+003  6.65207489E+000  -1.48670949E-004       6.29  <-- SCF
+      7  -1.71633385E+003  6.65088126E+000  -1.33719519E-005       6.41  <-- SCF
+      8  -1.71633384E+003  6.65033899E+000  -2.10835383E-006       6.51  <-- SCF
+      9  -1.71633384E+003  6.65025486E+000  -2.03030744E-007       6.62  <-- SCF
+------------------------------------------------------------------------ <-- SCF
+ 
+Final energy, E             =  -1716.234551991     eV
+Final free energy (E-TS)    =  -1716.333843595     eV
+(energies not corrected for finite basis set)
+ 
+NB est. 0K energy (E-0.5TS)      =  -1716.284197793     eV
+ 
+ 
+ ******************** Symmetrised Forces ********************
+ *                                                          *
+ *               Cartesian components (eV/A)                *
+ * -------------------------------------------------------- *
+ *                         x            y            z      *
+ *                                                          *
+ * Fe              1      0.00000     -0.00000     -0.00000 *
+ * Fe              2      0.00000      0.00000      0.00000 *
+ *                                                          *
+ ************************************************************
+ 
+ Pseudo atomic calculation performed for Fe 3d6 4s2
+ 
+ Converged in 30 iterations to a total energy of -848.3436 eV
+ 
+Charge spilling parameter for spin component 1 = 0.21%
+ 
+            Orbital Populations       
+     Ion    Atom   Orbital             Charge
+  -------------------------------------------
+     Fe     1      Dzz                  1.342
+     Fe     1      Dzy                  1.362
+     Fe     1      Dzx                  1.343
+     Fe     1      Dxx-yy               1.366
+     Fe     1      Dxy                  1.343
+     Fe     1      S                    0.930
+     Fe     1      Px                  -0.188
+     Fe     1      Py                   0.213
+     Fe     1      Pz                   0.289
+     Fe     2      Dzz                  1.342
+     Fe     2      Dzy                  1.362
+     Fe     2      Dzx                  1.343
+     Fe     2      Dxx-yy               1.366
+     Fe     2      Dxy                  1.343
+     Fe     2      S                    0.930
+     Fe     2      Px                  -0.188
+     Fe     2      Py                   0.213
+     Fe     2      Pz                   0.289
+  -------------------------------------------
+                           Total:      16.000
+  -------------------------------------------
+ 
+     Atomic Populations (Mulliken)
+     -----------------------------
+Species          Ion     s      p      d      f     Total  Charge (e)
+=====================================================================
+  Fe              1     0.93   0.31   6.76   0.00   8.00     0.00
+  Fe              2     0.93   0.31   6.76   0.00   8.00     0.00
+=====================================================================
+ 
+                 Bond                   Population      Length (A)
+======================================================================
+======================================================================
+ 
+Initialisation time =      4.32 s
+Calculation time    =      2.55 s
+Finalisation time   =      0.00 s
+Total time          =      6.88 s
+Peak Memory Use     = 686656 kB
+  
+Overall parallel efficiency rating: Terrible (29%)                              
+  
+Data was distributed by:-
+G-vector (2-way); efficiency rating: Mediocre (59%)                             
+k-point (16-way); efficiency rating: Terrible (34%)                             
+  
+Parallel notes:
+1) Calculation only took 6.9 s, so efficiency estimates may be inaccurate.      
