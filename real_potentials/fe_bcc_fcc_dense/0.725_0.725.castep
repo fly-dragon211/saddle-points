@@ -286,10 +286,11 @@ Initial  -1.35592977E+003  0.00000000E+000                         5.50  <-- SCF
  
 Final energy, E             =  -1717.297694658     eV
 Final free energy (E-TS)    =  -1717.354582195     eV
+
 (energies not corrected for finite basis set)
  
+NB est. 0K energy (E-0.5TS)      =  -1717.3     eV
 NB est. 0K energy (E-0.5TS)      =  -1717.326138427     eV
- 
  
  ******************** Symmetrised Forces ********************
  *                                                          *

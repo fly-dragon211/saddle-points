@@ -3,7 +3,7 @@ import numpy as np
 import numpy.linalg as la
 import matplotlib.pyplot as plt
 
-DX_MAX     = 0.02
+DX_MAX     = 0.1
 EPS        = DX_MAX / 10
 GRAD_THR   = 0.01
 SCALE_FACT = 2
@@ -35,6 +35,7 @@ def pot_real_grid(c, direc):
 			for l in lines:
 				if "NB" in l:
 					e = float(l.split("=")[1].split("e")[0])
+					break
 			if e == None: continue
 			if e < e_min:
 				e_min = e
@@ -60,6 +61,9 @@ def pot_li_bcc_fcc(c):
 def pot_fe_bcc_fcc(c):
 	return pot_real_grid(c, "fe_bcc_fcc")
 
+def pot_fe_bcc_fcc_dense(c):
+	return pot_real_grid(c, "fe_bcc_fcc_dense")
+
 def pot_egg(c):
 	x = c[0]
 	y = c[1]
@@ -80,13 +84,18 @@ def hess_egg(c):
 	return np.array([[xx,xy],[xy,xx]])
 
 def pot_coulomb(c):
-	xs = [0.5,0.5,-0.5,-0.5]
-	ys = [0.5,-0.5,0.5,-0.5]
 	ret = 0
-	for x in xs:
-		for y in ys:
+	for x in np.arange(-2.5,2.6,1):
+		for y in np.arange(-2.5,2.6,1):
 			ret += 1/la.norm(c-np.array([x,y]))
 	return ret
+
+def pot_coulomb_twist(c):
+	r = la.norm(c)
+	sin = np.sin(r)
+	cos = np.cos(r)
+	rot = np.array([[sin,cos],[cos,-sin]])
+	return pot_coulomb(np.matmul(rot,c))
 
 selected_potential = pot_egg
 pot_evals = 0
@@ -140,11 +149,11 @@ def plot_potential():
 			if val > max_val : max_val = val
 			if val < min_val : min_val = val
                 z.append(row)
-	z = ((z-min_val)/(max_val-min_val))**(0.5)
+	z = ((z-min_val)/(max_val-min_val))**(0.25)
         x,y = np.meshgrid(x,y)
 	levels = np.linspace(0,1,30)
-        plt.contour(x,y,z,cmap="seismic",levels=levels)
-        plt.imshow(z,cmap="prism",extent=(-RANGE,RANGE,-RANGE,RANGE),
+        plt.contour(x,y,z,cmap="tab20c",levels=levels)
+        plt.imshow(z,cmap="tab20c",extent=(-RANGE,RANGE,-RANGE,RANGE),
 		   origin="lower",interpolation="bilinear",alpha=0.2)
 	plt.xlabel("x")
 	plt.ylabel("y")
@@ -349,29 +358,74 @@ def simple_climb_line_min():
 		dx *= dx_scale * DX_MAX
 
 		x += dx
-		#x = line_minimize(x, fperp)
+		x = line_minimize(x, fperp)
 
 		path.append(np.array(x))
 	return path
 
-def slither():
+def support_points():
+	path = [np.zeros(2)]
+	rand = np.random.rand(2)*2-1
+	rand = DX_MAX * rand / la.norm(rand)
+	path.append(path[-1].copy() + rand)
+	d = len(path[-1])
+	
+	for step_index in range(0,100):
+		
+		pot_here = pot(path[-1])
+		delta_interp = DX_MAX
+		grad = np.zeros(d)
+
+		for i in range(0,d):
+			di = np.zeros(d)
+			di[i] = delta_interp
+			pot_plus  = pot(path[-1]+di)
+			pot_minus = pot(path[-1]-di)
+			grad[i] = (pot_plus - pot_minus)/(2*delta_interp)
+
+		f = - grad
+		n = path[-1].copy()/la.norm(path[-1])			
+		fpara = np.dot(f,n)*n
+		fperp = f - fpara
+		dx = fperp - fpara
+		dx = DX_MAX * dx / la.norm(dx)
+		path.append(path[-1].copy() + dx)
+
+	return path
+
+def art_n():
 	path = [np.zeros(2)]
 	rand = np.random.rand(2)*2-1
 	rand = DX_MAX * rand / la.norm(rand)
 	path.append(path[-1].copy() + rand)
 
+	neg_eval_dir = None
+
 	for step_index in range(0, 100):
+
 		f = - grad(path[-1].copy())
 		if la.norm(f) < GRAD_THR: break
+
 		n = path[-1].copy()
 		n /= la.norm(n)
+
+		if neg_eval_dir is None:
+			h = hess(path[-1])
+			evals, evecs = la.eig(h)
+			i_min = list(evals).index(min(evals))
+			if evals[i_min] < 0:
+				neg_eval_dir = evecs[i_min]	
+		else:
+			n = neg_eval_dir
+
 		fpara = np.dot(f,n)*n
 		fperp = f - fpara
 		dx = fperp - fpara
 		dx = DX_MAX * dx / la.norm(dx)
-		if la.norm(dx) - EPS > DX_MAX: print "Error |dx| > DX_MAX: ", la.norm(dx), " > ", DX_MAX
+		if la.norm(dx) > DX_MAX + EPS: print "Error |dx| > DX_MAX: ", la.norm(dx), " > ", DX_MAX
 		path.append(path[-1].copy() + dx)
-	
+		path.append(line_minimize(path[-1].copy(), fperp))
+
 	return path
 
 def rfo():
@@ -444,13 +498,16 @@ def min_mode():
 
 selected_potential = pot_li_bcc_fcc
 selected_potential = pot_egg
-selected_potential = pot_coulomb
 selected_potential = pot_fe_bcc_fcc
+selected_potential = pot_fe_bcc_fcc_dense
+selected_potential = pot_coulomb
+selected_potential = pot_coulomb_twist
 
 saddle_method = rfo
 saddle_method = min_mode
 saddle_method = simple_climb
-saddle_method = slither
+saddle_method = support_points
+saddle_method = art_n
 saddle_method = simple_climb_line_min
 
 def opt_param():
@@ -504,21 +561,22 @@ def opt_param():
 
 def plot_method(repeats=100):
 
-	spx = 3
-	spy = 3
+	spx = 4
+	spy = 4
 
 	global pot_evals, pot_evals_line_min
-	plt.subplot(spy, spx, 1)
+	pot_axis = plt.subplot(1, 2, 1)
 	plot_potential()
 
 	for n in range(0,repeats):
+
+		print "Method          : ", saddle_method
+		print "Potential       : ", selected_potential
 
 		pot_evals = 0
 		pot_evals_line_min = 0
 		path = saddle_method()
 
-		print "Method          : ", saddle_method
-		print "Potential       : ", selected_potential
 		print "Steps           : ", len(path)
 		print "Potential evals : ", pot_evals
 		print "    Line min pe : ", pot_evals_line_min
@@ -528,42 +586,41 @@ def plot_method(repeats=100):
 		if la.norm(grad(path[-1])) < GRAD_THR: sfstring = "Success"
 		print "Gradient        : ", grad(path[-1]), sfstring
 
-		plt.subplot(spy, spx, 1)
-		plt.plot(*zip(*path), marker="+")
+		pot_axis.plot(*zip(*path), marker="+")
 
 		eigs = [min(la.eig(hess(p))[0]) for p in path]
-		plt.subplot(spy, spx, 2)
+		plt.subplot(spy, spx, 3)
 		plt.plot(eigs)
 		plt.axhline(0, color="red")
 		plt.xlabel("Iteration")
 		plt.ylabel("Min eigenvalue")
 
 		ss = [la.norm(path[i]-path[i-1]) for i in range(1,len(path))]
-		plt.subplot(spy, spx, 3)
+		plt.subplot(spy, spx, 4)
 		plt.plot(ss)
 		plt.xlabel("Iteration")
 		plt.ylabel("Step size")
 		plt.axhline(DX_MAX, color="red")
 
 		grads = [la.norm(grad(p)) for p in path]
-		plt.subplot(spy, spx, 4)
+		plt.subplot(spy, spx, 7)
 		plt.plot(grads)
 		plt.xlabel("Iteration")
 		plt.ylabel("|grad|")
 
-		plt.subplot(spy, spx, 5)
+		plt.subplot(spy, spx, 8)
 		pots = [pot(p) for p in path]
 		plt.xlabel("Iteration")
 		plt.ylabel("Potential")
 		plt.plot(pots)
 
 		origin_dist = [la.norm(p) for p in path]
-		plt.subplot(spy, spx, 6)
+		plt.subplot(spy, spx, 11)
 		plt.xlabel("Iteration")
 		plt.ylabel("Distance from origin")
 		plt.plot(origin_dist)
 
-		plt.subplot(spy, spx, 7)
+		plt.subplot(spy, spx, 12)
 		plt.plot(origin_dist, pots, linestyle="none", marker="+")
 		plt.xlabel("Distance from origin")
 		plt.ylabel("Potential")

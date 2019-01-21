@@ -10,7 +10,7 @@ def parse_cell_for_params(seed):
 	# (convert everything to lower case)
 	global parameters, param_scales, lattice_abc_line, lattice_angles_line
 	global atom_counts, atom_lines, init_parameters, init_cell_file_lines
-	global param_fixed
+	global param_fixed, request_fixed
 	lines = [l.lower() for l in open(seed+".cell").read().split("\n")]
 	init_cell_file_lines = list(lines)
 	for i, line in enumerate(lines):
@@ -186,8 +186,7 @@ def init_files():
 def act_relax():
 	global parameters, param_scales, param_fixed, initial_time
 
-	EPS = 0.001
-	step_size = 0.3 * np.sqrt(float(len(parameters)))
+	step_size = 0.1 * np.sqrt(float(len(parameters)))
 
 	div = ""
 	for n in range(0,50): div += "="
@@ -234,10 +233,11 @@ def act_relax():
 				grad[i] = 0
 				append = " (fixed)"
 			else:
+				eps = step_size / 10
 				di = np.zeros(len(x))
-				di[i] = EPS * scales[i]
+				di[i] = eps * scales[i]
 				grad[i] = pot(x + di, names) - pot_here
-				grad[i] /= EPS
+				grad[i] /= eps
 			print "        "+names[i]+" ( = "+str(x[i])+") : "+ str(-grad[i]) + append
 
 		if iter_index == 0:
@@ -298,8 +298,12 @@ lattice_abc_line = -1
 lattice_angles_line = -1
 pot_seed_number = 1
 castep_cmd = "mpirun castep.mpi"
-if "serial" in sys.argv[1:]:
-	castep_cmd = "castep.serial"
+if "serial" in sys.argv[1:]: castep_cmd = "castep.serial"
+request_fixed = []
+for a in sys.argv[1:]: 
+	if a.startswith("fix_"): 
+		request_fixed.append(a[len("fix_"):])
+print request_fixed
 initial_time = time.time()
 
 init_files()
