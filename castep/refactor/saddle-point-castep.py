@@ -5,21 +5,24 @@ import numpy as np
 import numpy.linalg as la
 import matplotlib.pyplot as plt
 
-# Pad a string s to length l
 def pad_str(s, l):
+
+	# Pad a string s to length l
 	s = str(s)
 	while len(s) < l: s += " "
 	while len(s) > l: s = s[:-1]
 	return s
 
-def interp_new(interp_to, xs, fs):
+def interpolate(interp_to, xs, fs):
 
+	# Perform a 1D minimum-curvature interpolation 
+	# passing through the points (xs, fs). Evaluates
+	# the interpolation at the xvalues in interp_to
 	if len(xs) != len(fs):
-		print "Error in interp_new: len(xs) != len(fs)."
+		print "Error in interpolation: len(xs) != len(fs)."
 		quit()
 
         M = len(xs)
-
         m = np.zeros((4*(M-1), 4*(M-1)))
         b = np.zeros(4*(M-1))
 
@@ -257,20 +260,10 @@ class cell:
 		div = "".join(["~" for i in range(0,width)])
 		return div + "\n" + title + "\n" + div + "\n" + cf + "\n" + div
 
-	def perturb(self, param, delta):
-		
-		# Perturb the given parameter by the given amount
-		if param not in self.params:
-			print "Error: Tried to perturb a non-existant cell parameter!"
-			return
-
-		param.value += delta
-
-	def reset(self):
-		for p in self.params:
-			p.value = p.init_val
-
 	def test_pot_coulomb(self, rotation=0):
+
+		# A test potential consisting of 4 coulomb
+		# centres with an optional rotation
 		disps = []
 		for p in self.variable_params():
 			disp = (p.value-p.init_val)/p.scale
@@ -290,121 +283,113 @@ class cell:
 		for x in xs:
 			for y in ys:
 				pot += 1/la.norm(np.array([x,y])-disps)
-		return pot * 100
+		return pot
 
 	def potential(self):
-		self.pot_evals += 1
-		return self.test_pot_coulomb(rotation=0)
-
-	def line_minimize(self, direction, init_pot=None, max_disp=np.inf, normalize=True):
 		
-		# Minimize the cell potential along the
-		# direction given in variable parameter
-		# space
+		# Evaluate the potential with the current parameter values
+		self.pot_evals += 1
+		return self.test_pot_coulomb(rotation=2)
 
-		vp = self.variable_params()
-		if len(direction) != len(vp):
-			print "Error, dimension mismatch in line_minimize!"
-			return	
+	def config(self):
 
-		if init_pot == None: init_pot = self.potential()
+		# Get the current location in normalized configuration space
+		return np.array([p.value/p.scale for p in self.variable_params()])
 
-		if normalize: direction /= la.norm(direction)
-		init_pars = [p.value for p in vp]
+	def init_config(self):
 
-		disps = [0]
-		pots  = [init_pot]
+		# Get the initial location in normalized configuration space
+		return np.array([p.init_val/p.scale for p in self.variable_params()])
 
+	def set_config(self, cfg):
+		
+		# Sets the values of the variable parameters
+		# from normalized configuration space
+		for i, par in enumerate(self.variable_params()):
+			par.value = cfg[i]*par.scale
+
+	def line_min_config(self, step, config_dir, max_delta):
+
+		# Perform a line minimization of the potential
+		# along the direction in configuration space config_dir
+		# maximum allowed movement along config_dir is max_delta
+		config_dir /= la.norm(config_dir)
+		init_config = self.config()
+		deltas = [0]
+		pots   = [self.potential()]
+
+		# Bound the minimum
 		while True:
-			
 			n = pots.index(min(pots))
 			if n not in [0, len(pots)-1]: break
 
 			if n == 0:
-				if abs(disps[0]-0.05) > max_disp: break
-				disps.insert(0, disps[0]-0.05)
-				for i, v in enumerate(init_pars):
-					vp[i].value = v + disps[0]*direction[i]
+				# Minimum is at (deltas[0], pots[0])
+				if abs(deltas[0]-step) > max_delta: break
+				deltas.insert(0, deltas[0]-step)
+				self.set_config(init_config+deltas[0]*config_dir)
 				pots.insert(0, self.potential())
 			else:
-				if abs(disps[-1]+0.05) > max_disp: break
-				disps.append(disps[-1]+0.05)
-				for i, v in enumerate(init_pars):
-					vp[i].value = v + disps[-1]*direction[i]
+				# Minimum is at (deltas[-1], pots[-1])
+				if abs(deltas[-1]+step) > max_delta: break
+				deltas.append(deltas[-1]+step)
+				self.set_config(init_config+deltas[-1]*config_dir)
 				pots.append(self.potential())
 
-		if len(disps) < 2: return
-
-		int_x = np.linspace(min(disps)+0.001, max(disps)-0.001, 100)
-		int_y = interp_new(int_x, disps, pots)
-
+		# Use a minimum-curvature interpolation to 
+		# approximate the minimal configuration
+		int_x = np.linspace(min(deltas)+step/100, max(deltas)-step/100, 100)
+		int_y = interpolate(int_x, deltas, pots)
 		mini = list(int_y).index(min(int_y))
-		for i, v in enumerate(init_pars):
-			vp[i].value = v + int_x[mini]*direction[i]
+		self.set_config(init_config + int_x[mini]*config_dir)
 
 		return
-		plt.plot(disps, pots)
+		# Plot the interpolation
+		plt.plot(deltas, pots)
 		plt.plot(int_x, int_y)
 		plt.axvline(int_x[mini])
 		plt.show()
 
-	def line_min_disp(self, direction, max_disp=np.inf):
-		direction /= la.norm(direction)
-		for i, par in enumerate(self.variable_params()):
-			direction[i] *= par.scale
-		self.line_minimize(direction, normalize=False, max_disp=max_disp)
+	def plot_potential(self):
 
-	def config(self):
-		return np.array([p.value/p.scale for p in self.variable_params()])
-
-	def init_config(self):
-		return np.array([p.init_val/p.scale for p in self.variable_params()])
-
-	def set_config(self, cfg):
-		for i, par in enumerate(self.variable_params()):
-			par.value = cfg[i]*par.scale
-
-pot_already_plotted = False
-def plot_potential(cell):
-	global pot_already_plotted
-	if pot_already_plotted: return
-	pot_already_plotted = True
-	vp = cell.variable_params()
-	X_RANGE  = vp[0].scale*2
-	Y_RANGE  = vp[1].scale*2
-	xc = vp[0].init_val
-	yc = vp[1].init_val
-        RESOL = 100
-        x   = np.linspace(-X_RANGE+xc,X_RANGE+xc,RESOL)
-        y   = np.linspace(-Y_RANGE+yc,Y_RANGE+yc,RESOL)
-        z   = []
-        all_vals = []
-        max_val = -np.inf
-        min_val = np.inf
-	vp = cell.variable_params()
-        for yi in y:
-                row = []
-                for xi in x:
-			vp[0].value = xi
-			vp[1].value = yi
-			val = cell.potential()
-                        row.append(val)
-                        all_vals.append(val)
-                        if val > max_val : max_val = val
-                        if val < min_val : min_val = val
-                z.append(row)
-	for p in vp: p.value = p.init_val
-        z = ((z-min_val)/(max_val-min_val))**(0.25)
-        x,y = np.meshgrid(x,y)
-        levels = np.linspace(0,1,30)
-        plt.contour(x,y,z,cmap="tab20c",levels=levels)
-        plt.imshow(z,cmap="tab20c",extent=(-X_RANGE+xc,X_RANGE+xc,-Y_RANGE+yc,Y_RANGE+yc),
-                   origin="lower",interpolation="bilinear",alpha=0.2,aspect="auto")
-        plt.xlabel(vp[0].name)
-        plt.ylabel(vp[1].name)
-
+		# Plot the 2D slice of the cell potential
+		# optained by varying the first two parameters
+		vp        = self.variable_params()
+		init_vals = [p.value for p in vp]
+		xmin = vp[0].init_val - vp[0].scale*2
+		xmax = vp[0].init_val + vp[0].scale*2
+		ymin = vp[1].init_val - vp[1].scale*2
+		ymax = vp[1].init_val + vp[1].scale*2
+		res  = 100
+		x    = np.linspace(xmin, xmax, res)
+		y    = np.linspace(ymin, ymax, res)
+		z    = []
+		max_val  = -np.inf
+		min_val  = np.inf
+		for yi in y:
+			row = []
+			for xi in x:
+				vp[0].value = xi
+				vp[1].value = yi
+				val = cell.potential()
+				row.append(val)
+				if val > max_val : max_val = val
+				if val < min_val : min_val = val
+			z.append(row)
+		for i, p in enumerate(vp): p.value = init_vals[i]
+		z = ((z-min_val)/(max_val-min_val))**(0.25)
+		x,y = np.meshgrid(x,y)
+		levels = np.linspace(0,1,30)
+		plt.contour(x,y,z,cmap="tab20c",levels=levels)
+		plt.imshow(z,cmap="tab20c",extent=(xmin,xmax,ymin,ymax),
+			   origin="lower",interpolation="bilinear",alpha=0.2,aspect="auto")
+		plt.xlabel(vp[0].name)
+		plt.ylabel(vp[1].name)
 
 class path_info:
+
+	# A class for recording information about the path
+	# taken through configuration space
 	
 	def __init__(self):
 		self.pot        = None
@@ -414,15 +399,14 @@ class path_info:
 		self.fperp      = None
 		self.config     = None
 		self.line_min   = None
-		self.pot_evals  = None
 		self.activation = None
 
 def find_saddle_point(cell):
 
-	step_size = 0.1
+	step_size = 0.1 # Step size in config space
+	path = []       # Will contain info about path
 
-	path = []
-
+	# Random initial displacement
 	init_cfg = cell.config()
 	init_cfg += step_size*(np.random.rand(len(init_cfg))*2-1)
 	cell.set_config(init_cfg)
@@ -430,12 +414,14 @@ def find_saddle_point(cell):
 	for step_index in range(0,100):
 
 		p = path_info()
-		
-		p.config    = cell.config()
-		p.pot       = cell.potential()
-		p.force     = np.zeros(len(p.config))
-		p.pot_evals = cell.pot_evals
 
+		# Initialize this step
+		p.pot    = cell.potential()
+		p.config = cell.config()
+		p.force  = np.zeros(len(p.config))
+
+		# Evaluate the force in the current 
+		# configuration using finite differences
 		for i in range(0, len(p.config)):
 			ei    = np.zeros(len(p.config))
 			eps   = step_size / 10
@@ -443,35 +429,52 @@ def find_saddle_point(cell):
 			cell.set_config(p.config + ei)
 			p.force[i] = -(cell.potential() - p.pot)/eps
 
+		# Evaluate a normal and evaluate the 
+		# parallel and perpendicular force
+		# components to it
 		p.norm  = p.config - cell.init_config()
 		p.norm /= la.norm(p.norm)
 		p.fpara = np.dot(p.force, p.norm)*p.norm
 		p.fperp = p.force - p.fpara
 
+		# Activate the configuration along the
+		# normal by inverting the parallel force
+		# component
 		p.activation = p.fperp - p.fpara
 		p.activation = step_size * p.activation / la.norm(p.activation)
-
 		cell.set_config(p.config + p.activation)
-		cell.line_min_disp(p.fperp, 0.2)
-		p.line_min = cell.config() - p.config - p.activation
 
-		if len(path) > 0:
-			if np.dot(p.activation, path[-1].activation) < 0:
-				step_size /= 2
-				p.activation /= 2
-			if la.norm(p.force) < la.norm(path[0].force):
-				path.append(p)
-				break
+		# Perform a line minimization along the
+		# perpendicular component
+		cell.line_min_config(step_size, p.fperp, step_size*2)
+		p.line_min = cell.config() - p.config - p.activation
 
 		path.append(p)
 
+		if len(path) > 2:
+
+			# If we've gone back on ourselves
+			# reduce the step size (a reduction
+			# by a factor of 2 corresponds to
+			# bisecting towards the minimum)
+			d1 = path[-1].config - path[-2].config
+			d2 = path[-2].config - path[-3].config
+			if np.dot(d1,d2) < 0: step_size /= 2
+
+			# If the total force has dropped below the
+			# total force we had at the start, stop
+			if la.norm(p.force) < la.norm(path[0].force):
+				break
 	return path
 
 def plot_path_info(path, cell):
 
-	print "Length of path: ",len(path)
+	# Plot information about a path
+	# through the configuration space 
+	# of the given cell
+
 	plt.subplot(1,2,1)
-	plot_potential(cell)
+	cell.plot_potential()
 	scales = [par.scale for par in cell.variable_params()]
 
 	for p in path: 
@@ -497,17 +500,15 @@ def plot_path_info(path, cell):
 	plt.ylabel("Step size\n(Normalized)")
 
 	plt.subplot(4,4,8)
-	plt.plot([p.pot_evals for p in path])
+	plt.plot([la.norm(p.config-cell.init_config()) for p in path])
 	plt.xlabel("Iteration")
-	plt.ylabel("Potential evaluations\n(Cumulative)")
+	plt.ylabel("Normalized displacement")
+
+	plt.show()
 
 # Run program
 cell = cell(sys.argv[1])
 cell.fix_lattice_params("AB")
 cell.fix_lattice_angles("AB")
 cell.fix_atoms()
-print parameter.table(cell.params, title = "Initial cell parameters")
-print "\n"+cell.formatted_cell_file(title = "Example generated cell file")+"\n"
-path = find_saddle_point(cell)
-plot_path_info(path, cell)
-plt.show()
+plot_path_info(find_saddle_point(cell), cell)
