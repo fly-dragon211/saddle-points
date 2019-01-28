@@ -119,6 +119,8 @@ class cell(object):
 
 		self.params = []
 		self.pot_evals = 0
+		self.seed = cellfile.split("/")[-1].split(".cell")[0]
+		self.singlepoint_count = 0
 
 		# Parse a cell from a cellfile
 		# Parse line-by-line, blanking out lines that are parsed
@@ -158,12 +160,14 @@ class cell(object):
 					if "%endblock" in lines[i2]: 
 						lines[i2] = ""
 						break
+					self.atom_names = []
 					a,x,y,z = lines[i2].split()
 					atom_n = i2-i
 					for ic, val in enumerate([float(v) for v in [x,y,z]]):
 						pname = "Atom "+str(atom_n)+" ("+a+") "+"xyz"[ic]+" coord"
 						p = parameter(pname, val, 1.0, False)
 						self.params.append(p)
+						self.atom_names.append(a[0].upper()+a[1:])
 					lines[i2] = ""
 					i2 += 1
 
@@ -186,8 +190,9 @@ class cell(object):
 		cf += "%endblock lattice_abc\n\n"
 		cf += "%block positions_frac\n"
 		for i in range(6,len(self.params),3):
+			cf += self.atom_names[(i-6)/3] + " "
 			cf += " ".join([str(self.params[j].value) for j in range(i,i+3)])+"\n"
-		cf += "%endblock lattice_abc\n\n"
+		cf += "%endblock positions_frac\n\n"
 		for e in self.extras: cf += e + "\n"
 		return cf.strip()
 
@@ -248,7 +253,24 @@ class cell(object):
 
 		# Evaluate the potential with the current parameter values
 		self.pot_evals += 1
-		return self.test_pot_coulomb(rotation=1)
+		self.singlepoint_count += 1
+
+		# Run castep to get singlepoint energy, store intermediate
+		# files in ./singlepoints/
+		global castep_cmd
+		prefix = "singlepoints/"+self.seed+"_"+str(self.singlepoint_count)
+		cellf = open(prefix+".cell","w+")
+		paraf = open(prefix+".param","w+")
+		cellf.write(self.gen_cellfile())
+		paraf.write(open(sys.argv[2]).read())
+		cellf.close()
+		paraf.close()
+		os.system("cd singlepoints; "+castep_cmd+" "+
+			  self.seed+"_"+str(self.singlepoint_count)+
+			  " >/dev/null 2>&1")
+		for line in open(prefix+".castep").read().split("\n"):
+			if "NB" in line:
+				return float(line.split("=")[1].split("e")[0])
 
 	@property
 	def config(self):
@@ -413,27 +435,35 @@ class path_info(object):
 		d = "".join(["%" for c in s])
 		return "\n" + d + "\n" + s + "\n" + d
 
+out_files = {}
+def write(fname, message):
+	global out_files
+	if fname not in out_files: 
+		out_files[fname] = open(fname,"w",buffering=1)
+	f = out_files[fname]
+	f.write(message+"\n")
+
 def find_saddle_point(cell):
 
 	step_size = 0.1 # Step size in config space
 	path = []       # Will contain info about path
 
-	print "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
-	print "| Begin saddle point search |"
-	print "|  (Activation-relaxation)  |"
-	print "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+	write(cell.seed+".out","%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+	write(cell.seed+".out","| Begin saddle point search |")
+	write(cell.seed+".out","|  (Activation-relaxation)  |")
+	write(cell.seed+".out","%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
 
-	print "\nInitial random displacement:"
+	write(cell.seed+".out", "\nInitial random displacement:")
 	rand = step_size*(np.random.rand(len(cell.config))*2-1)
 	for i, par in enumerate(cell.variable_params()):
-		print "{0:20.20}  {1:10.5g}".format(par.name, rand[i]*par.scale)
+		write(cell.seed+".out","{0:20.20}  {1:10.5g}".format(par.name, rand[i]*par.scale))
 
 	# Random initial displacement
 	cell.config += rand
 
 	for step_index in range(0,100):
 
-		print path_info.iter_header(step_index+1)
+		write(cell.seed+".out", path_info.iter_header(step_index+1))
 		p = path_info()
 
 		# Initialize this step
@@ -444,15 +474,15 @@ def find_saddle_point(cell):
 
 		# Evaluate the force in the current 
 		# configuration using finite differences
-		print "\nComputing forces"
-		print path_info.force_headers()
+		write(cell.seed+".out", "\nComputing forces")
+		write(cell.seed+".out", path_info.force_headers())
 		for i in range(0, len(p.config)):
 			ei    = np.zeros(len(p.config))
 			eps   = step_size / 10
 			ei[i] = eps
 			cell.config = p.config + ei
 			p.force[i]  = -(cell.potential() - p.pot)/eps
-			print p.force_info(i, cell)
+			write(cell.seed+".out", p.force_info(i, cell))
 
 		# Evaluate a normal and evaluate the 
 		# parallel and perpendicular force
@@ -474,8 +504,8 @@ def find_saddle_point(cell):
 		p.pot_after = cell.line_min_config(step_size, p.fperp, step_size*2)
 		p.line_min  = cell.config - p.config - p.activation
 
-		print "\nStep taken"
-		print p.step_info(cell)
+		write(cell.seed+".out", "\nStep taken (step size ="+str(step_size)+")")
+		write(cell.seed+".out", p.step_info(cell))
 		path.append(p)
 
 		if len(path) > 2:
@@ -491,6 +521,7 @@ def find_saddle_point(cell):
 			# If the total force has dropped below the
 			# total force we had at the start, stop
 			if la.norm(p.force) < la.norm(path[0].force):
+				continue
 				break
 	return path
 
@@ -506,13 +537,12 @@ def plot_path_info(path, cell, pot_axes=None):
 	pot_axes.plot([p.config[0]*scales[0] for p in path],
 		      [p.config[1]*scales[1] for p in path])
 
-	if False:
-		for p in path: 
-			cf = p.config * scales
-			ac = p.activation   * scales
-			lm = p.line_min * scales
-			plt.plot(*zip(*[cf, cf + ac]), color="red")
-			plt.plot(*zip(*[cf + ac, cf + ac + lm]), color="blue")
+	for p in path: 
+		cf = p.config * scales
+		ac = p.activation   * scales
+		lm = p.line_min * scales
+		plt.plot(*zip(*[cf, cf + ac]), color="red")
+		plt.plot(*zip(*[cf + ac, cf + ac + lm]), color="blue")
 	
 	plt.subplot(4,4,3)
 	plt.plot([p.pot for p in path])
@@ -553,5 +583,11 @@ def test(cell):
 	plt.show()
 
 # Run program
+castep_cmd = "nice -15 mpirun -np 4 castep.mpi"
+os.system("rm -r singlepoints")
+os.system("mkdir singlepoints")
 cell = cell(sys.argv[1])
-test(cell)
+cell.fix_atoms()
+cell.fix_lattice_params("A")
+cell.fix_lattice_angles("ABC")
+path = find_saddle_point(cell)
