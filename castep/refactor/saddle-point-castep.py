@@ -118,9 +118,12 @@ class cell(object):
 	def __init__(self, cellfile):
 
 		self.params = []
+		self.atom_names = []
 		self.pot_evals = 0
+		self.force_evals = 0
 		self.seed = cellfile.split("/")[-1].split(".cell")[0]
 		self.singlepoint_count = 0
+		self.test_potential = False
 
 		# Parse a cell from a cellfile
 		# Parse line-by-line, blanking out lines that are parsed
@@ -160,14 +163,14 @@ class cell(object):
 					if "%endblock" in lines[i2]: 
 						lines[i2] = ""
 						break
-					self.atom_names = []
 					a,x,y,z = lines[i2].split()
 					atom_n = i2-i
 					for ic, val in enumerate([float(v) for v in [x,y,z]]):
-						pname = "Atom "+str(atom_n)+" ("+a+") "+"xyz"[ic]+" coord"
+						aname = a[0].upper() + a[1:]
+						pname = "Atom "+str(atom_n)+" ("+aname+") "+"xyz"[ic]+" coord"
 						p = parameter(pname, val, 1.0, False)
 						self.params.append(p)
-						self.atom_names.append(a[0].upper()+a[1:])
+						self.atom_names.append(aname)
 					lines[i2] = ""
 					i2 += 1
 
@@ -190,7 +193,7 @@ class cell(object):
 		cf += "%endblock lattice_abc\n\n"
 		cf += "%block positions_frac\n"
 		for i in range(6,len(self.params),3):
-			cf += self.atom_names[(i-6)/3] + " "
+			cf += self.atom_names[i-6] + " "
 			cf += " ".join([str(self.params[j].value) for j in range(i,i+3)])+"\n"
 		cf += "%endblock positions_frac\n\n"
 		for e in self.extras: cf += e + "\n"
@@ -251,6 +254,9 @@ class cell(object):
 
 	def potential(self):
 
+		if self.test_potential:
+			return self.test_pot_coulomb(rotation=1)
+
 		# Evaluate the potential with the current parameter values
 		self.pot_evals += 1
 		self.singlepoint_count += 1
@@ -271,6 +277,73 @@ class cell(object):
 		for line in open(prefix+".castep").read().split("\n"):
 			if "NB" in line:
 				return float(line.split("=")[1].split("e")[0])
+
+	def potential_and_force(self, fd_eps=0.01):
+
+		# Get the force and potential from castep
+		self.force_evals += 1
+		self.singlepoint_count += 1
+
+		# Run castep with the current configuration
+		global castep_cmd
+		prefix = "singlepoints/"+self.seed+"_"+str(self.singlepoint_count)
+		cellf = open(prefix+".cell","w+")
+		paraf = open(prefix+".param","w+")
+		cellf.write(self.gen_cellfile())
+		paraf.write(open(sys.argv[2]).read())
+		cellf.close()
+		paraf.close()
+		os.system("cd singlepoints; "+castep_cmd+" "+
+			  self.seed+"_"+str(self.singlepoint_count)+
+			  " >/dev/null 2>&1")
+
+		pot = None
+		par_force = {}
+
+		# Get potential and forces on atoms from castep
+		lines = open(prefix+".castep").read().split("\n")
+		for i, line in enumerate(lines):
+
+			# Parse forces on atoms
+			if "Cartesian components (eV/A)" in line:
+
+				j = i
+				while True:
+					j += 1
+					if "." in lines[j]:
+						s1, name, num, x, y, z, s2 = lines[j].split()
+						for k in range(0, len(self.atom_names)/3):
+							if self.atom_names[k*3] != name: continue
+							if self.params[6+k*3] in par_force: continue
+							par_force[self.params[6+k*3]] = float(x)
+							par_force[self.params[6+k*3+1]] = float(y)
+							par_force[self.params[6+k*3+2]] = float(z)
+
+					if "**" in lines[j]:
+						break
+
+			# Parse potential
+			if "NB" in line:
+				pot = float(line.split("=")[1].split("e")[0])
+		
+		# Get forces corresponding to variable parameters
+		vp = self.variable_params()
+		force = [par_force[p] for p in vp]
+		return [pot, force]
+		
+		# Get the force using finite differences
+		if start_pot == None: start_pot = self.potential()
+		start_config = self.config
+
+		force = np.zeros(len(self.config))
+		for i in range(0, len(self.config)):
+			ei    = np.zeros(len(self.config))
+			ei[i] = fd_eps
+			self.config = start_config + ei
+			force[i]  = -(self.potential() - start_pot)/fd_eps
+
+		self.config = start_config
+		return [start_pot, force]
 
 	@property
 	def config(self):
@@ -297,6 +370,7 @@ class cell(object):
 		# Reset the cell to it's initial configuration
 		self.config = self.init_config
 		self.pot_evals = 0
+		self.force_evals = 0
 
 	def line_min_config(self, step, config_dir, max_delta):
 
@@ -349,7 +423,7 @@ class cell(object):
 		pot_evals_before = self.pot_evals
 		config_before = self.config
 
-		vp        = self.variable_params()
+		vp   = self.variable_params()
 		x    = np.linspace(-2, 2, 100) + self.init_config[0]
 		y    = np.linspace(-2, 2, 100) + self.init_config[1]
 		z    = []
@@ -395,6 +469,21 @@ class path_info(object):
 		self.pot_after  = None
 		self.activation = None
 
+	def verbose_info(self, cell):
+		vp = cell.variable_params()
+		ra = range(0,len(vp))
+		s  = ""
+		s += "\nPotential before/after:"+str(self.pot)+","+str(self.pot_after)
+		s += "\nName:"+",".join([p.name for p in vp])
+		s += "\nValue:"+",".join([str(self.config[i]*vp[i].scale) for i in ra])
+		s += "\nNormal:"+",".join([str(self.norm[i]*vp[i].scale) for i in ra])
+		s += "\nForce:"+",".join([str(self.force[i]) for i in ra])
+		s += "\nForce parallel:"+",".join([str(self.fpara[i]) for i in ra])
+		s += "\nForce perpendicular:"+",".join([str(self.fperp[i]) for i in ra])
+		s += "\nActivation:"+",".join([str(self.activation[i]*vp[i].scale) for i in ra])
+		s += "\nLine minimization:"+",".join([str(self.line_min[i]*vp[i].scale) for i in ra])
+		return s		
+
 	@staticmethod
 	def force_headers():
 		fs = "{0:20.20}  {1:10.10}  {2:10.10}  {3:10.10}"
@@ -402,19 +491,22 @@ class path_info(object):
 		dv = "".join(["~" for c in s])
 		return dv + "\n" + s + "\n" + dv
 
-	def force_info(self, i, cell):
+	def force_info(self, cell):
+		s = path_info.force_headers()
 		vp  = cell.variable_params()
-		par = vp[i].name
-		val = self.config[i]*vp[i].scale
-		ini = vp[i].init_val
-		frc = self.force[i]
-		fs  = "{0:20.20}   {1:10.5g}  {2:10.5g}  {3:10.5g}"
-		return fs.format(par,val,ini,frc)
+		for i in range(0,len(vp)):
+			par = vp[i].name
+			val = self.config[i]*vp[i].scale
+			ini = vp[i].init_val
+			frc = self.force[i]
+			fs  = "{0:20.20}   {1:10.5g}  {2:10.5g}  {3:10.5g}"
+			s  += "\n"+fs.format(par,val,ini,frc)
+		return s
 
 	@staticmethod
 	def step_headers():
-		fs = "{0:20.20}  {1:10.10}  {2:10.10}"
-		s  = fs.format("Parameter","Activation","Line min")
+		fs = "{0:20.20}  {1:10.10}  {2:10.10}  {3:10.10}"
+		s  = fs.format("Parameter","Activation","Line min","Step")
 		dv = "    "+"".join(["~" for c in s])
 		return dv + "\n    " + s + "\n" + dv
 
@@ -426,7 +518,7 @@ class path_info(object):
 			act = self.activation[i]*vp[i].scale
 			lim = self.line_min[i]*vp[i].scale
 		        s += "\n    {0:20.20}  ".format(par)
-			s +="{0:10.5g}  {1:10.5g}".format(act,lim)
+			s +="{0:10.5g}  {1:10.5g}  {2:10.5g}".format(act,lim,act+lim)
 		return s
 
 	@staticmethod
@@ -445,8 +537,8 @@ def write(fname, message):
 
 def find_saddle_point(cell):
 
-	step_size = 0.1 # Step size in config space
-	path = []       # Will contain info about path
+	step_size = 0.01 # Step size in config space
+	path = []        # Will contain info about path
 
 	write(cell.seed+".out","%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
 	write(cell.seed+".out","| Begin saddle point search |")
@@ -467,22 +559,16 @@ def find_saddle_point(cell):
 		p = path_info()
 
 		# Initialize this step
-		if len(path) > 0: p.pot = path[-1].pot_after
-		else: p.pot = cell.potential()
 		p.config = cell.config
-		p.force  = np.zeros(len(p.config))
 
 		# Evaluate the force in the current 
 		# configuration using finite differences
-		write(cell.seed+".out", "\nComputing forces")
-		write(cell.seed+".out", path_info.force_headers())
-		for i in range(0, len(p.config)):
-			ei    = np.zeros(len(p.config))
-			eps   = step_size / 10
-			ei[i] = eps
-			cell.config = p.config + ei
-			p.force[i]  = -(cell.potential() - p.pot)/eps
-			write(cell.seed+".out", p.force_info(i, cell))
+		p.pot, p.force  = cell.potential_and_force(fd_eps = step_size/10)
+		write(cell.seed+".out", p.force_info(cell))
+
+		# If the force is 0, we've either hit the
+		# saddle point on the nose, or stuff broke
+		if la.norm(p.force) == 0: break
 
 		# Evaluate a normal and evaluate the 
 		# parallel and perpendicular force
@@ -504,8 +590,9 @@ def find_saddle_point(cell):
 		p.pot_after = cell.line_min_config(step_size, p.fperp, step_size*2)
 		p.line_min  = cell.config - p.config - p.activation
 
-		write(cell.seed+".out", "\nStep taken (step size ="+str(step_size)+")")
+		write(cell.seed+".out", "\nStep taken (step size = "+str(step_size)+")")
 		write(cell.seed+".out", p.step_info(cell))
+		write(cell.seed+".dat", p.verbose_info(cell))
 		path.append(p)
 
 		if len(path) > 2:
@@ -525,17 +612,18 @@ def find_saddle_point(cell):
 				break
 	return path
 
-def plot_path_info(path, cell, pot_axes=None):
+def plot_path_info(path, cell):
 
 	# Plot information about a path
 	# through the configuration space 
 	# of the given cell
 
-	if pot_axes == None: pot_axes = plt.subplot(1,2,1)
 	scales = [par.scale for par in cell.variable_params()]
 
-	pot_axes.plot([p.config[0]*scales[0] for p in path],
-		      [p.config[1]*scales[1] for p in path])
+	plt.subplot(1,2,1)
+	if cell.test_potential: cell.plot_potential()
+	plt.plot([p.config[0]*scales[0] for p in path],
+	         [p.config[1]*scales[1] for p in path])
 
 	for p in path: 
 		cf = p.config * scales
@@ -564,22 +652,6 @@ def plot_path_info(path, cell, pot_axes=None):
 	plt.xlabel("Iteration")
 	plt.ylabel("Normalized displacement")
 
-def test(cell):
-	cell.fix_lattice_params("AB")
-	cell.fix_lattice_angles("AB")
-	cell.fix_atoms()
-	pot_axes = plt.subplot(1,2,1)
-	cell.plot_potential()
-
-	pot_evals = []
-	for i in range(0,1):
-		cell.reset()
-		plot_path_info(find_saddle_point(cell), cell, pot_axes=pot_axes)
-		pot_evals.append(cell.pot_evals)
-	plt.subplot(4,4,11)
-	plt.hist(pot_evals, bins=20)
-	plt.xlabel("Potential evaluations")
-	plt.ylabel("Count")
 	plt.show()
 
 # Run program
@@ -587,7 +659,9 @@ castep_cmd = "nice -15 mpirun -np 4 castep.mpi"
 os.system("rm -r singlepoints")
 os.system("mkdir singlepoints")
 cell = cell(sys.argv[1])
-cell.fix_atoms()
-cell.fix_lattice_params("A")
+cell.fix_atoms([1])
+cell.fix_lattice_params("ABC")
 cell.fix_lattice_angles("ABC")
+#cell.test_potential = True
 path = find_saddle_point(cell)
+if cell.test_potential: plot_path_info(path, cell)	
