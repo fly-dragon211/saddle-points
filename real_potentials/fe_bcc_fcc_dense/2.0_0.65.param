@@ -1,4 +1,0 @@
-task singlepoint
-cut_off_energy 500 eV
-nextra_bands 10
-write_none true
