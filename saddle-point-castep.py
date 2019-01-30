@@ -556,7 +556,7 @@ def write(fname, message):
 
 def find_saddle_point(cell):
 
-	MAX_STEP_SIZE = 0.1
+	MAX_STEP_SIZE = 0.05
 	step_size = MAX_STEP_SIZE # Step size in config space
 	path = []                 # Will contain info about path
 
@@ -587,7 +587,8 @@ def find_saddle_point(cell):
 		if p.pot < min_pot:
 			min_pot  = p.pot
 			min_conf = p.config
-		write(cell.seed+".out", p.force_info(cell))
+			write(cell.seed+".out", "Found new lowest potential")
+		write(cell.seed+".out", p.force_info(cell)+"\n")
 
 		# Evaluate a normal and evaluate the 
 		# parallel and perpendicular force
@@ -597,11 +598,13 @@ def find_saddle_point(cell):
 		if la.norm(p.norm) == 0: 
 			# We've found a new min_conf, 
 			# use the random direction as p.norm
+			write(cell.seed+".out", "Setting normal to random direction")
 			p.norm = rand 
 
 		if la.norm(p.force) == 0:
 			# If no force, just follow
 			# p.norm out of the basin
+			write(cell.seed+".out", "Force = 0, following normal")
 			p.force = -p.norm
 
 		p.norm /= la.norm(p.norm)
@@ -615,7 +618,7 @@ def find_saddle_point(cell):
 		p.activation = step_size * p.activation / la.norm(p.activation)
 		cell.config  = p.config + p.activation
 
-		if True:
+		if False:
 			# Perform a line minimization along the
 			# perpendicular component
 			p.pot_after = cell.line_min_config(step_size, p.fperp, step_size*2)
@@ -639,8 +642,10 @@ def find_saddle_point(cell):
 			d2 = path[-2].config - path[-3].config
 			if np.dot(d1,d2) < 0: 
 				step_size /= 2
-			else: 
-				step_size *= 2
+			elif False: 
+				# Allow slow increase of step size
+				# if we decreased it spuriously
+				step_size *= 1.1
 				if step_size > MAX_STEP_SIZE:
 					step_size = MAX_STEP_SIZE
 	return path
