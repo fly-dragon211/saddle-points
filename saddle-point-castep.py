@@ -509,7 +509,7 @@ class path_info(object):
 			val = self.config[i]*vp[i].scale
 			ini = vp[i].init_val
 			frc = self.force[i]
-			fs  = "{0:20.20}   {1:10.5g}  {2:10.5g}  {3:10.5g}"
+			fs  = "{0:20.20}  {1:10.5g}  {2:10.5g}  {3:10.5g}"
 			s  += "\n"+fs.format(par,val,ini,frc)
 		return s
 
@@ -542,9 +542,9 @@ def write(fname, message):
 	f = out_files[fname]
 	f.write(message+"\n")
 
-def find_saddle_point(cell, line_min=False):
+def find_saddle_point(cell, line_min=False, max_step_size=0.05):
 
-	MAX_STEP_SIZE = 0.05
+	MAX_STEP_SIZE = max_step_size
 	step_size = MAX_STEP_SIZE # Step size in config space
 	path = []                 # Will contain info about path
 
@@ -554,6 +554,7 @@ def find_saddle_point(cell, line_min=False):
 	write(cell.seed+".out","%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
 	if line_min: write(cell.seed+".out","Line minimization: on")
 	else: write(cell.seed+".out","Line minimization: off")
+	write(cell.seed+".out","Maximum normalized step size: "+str(max_step_size))
 
 	# Pick a random search direction
 	rand = step_size*(np.random.rand(len(cell.config))*2-1)
@@ -616,12 +617,7 @@ def find_saddle_point(cell, line_min=False):
 			d2 = path[-2].config - path[-3].config
 			if np.dot(d1,d2) < 0: 
 				step_size /= 2
-			elif False: 
-				# Allow slow increase of step size
-				# if we decreased it spuriously
-				step_size *= 1.1
-				if step_size > MAX_STEP_SIZE:
-					step_size = MAX_STEP_SIZE
+				write(cell.seed+".out", "Inversion detected, halving step size")
 	return path
 
 def plot_path_info(path, cell):
@@ -678,6 +674,7 @@ os.system("mkdir singlepoints")
 castep_cmd = "nice -15 mpirun -np 4 castep.mpi"
 cell = cell(sys.argv[1]+".cell")
 line_min = False
+max_step_size = 0.05
 
 # Parse the .saddle file for input specification
 lines = [l.strip().lower() for l in open(sys.argv[1]+".saddle").read().split("\n")]
@@ -718,6 +715,10 @@ for l in lines:
 		# Turn on line minimization"
 		line_min = True
 
+	elif tag == "max_step_size":
+		# Read in maximum step size
+		max_step_size = float(vals[0])
+
 # Set up the cell correctly if we're using the test potential
 if cell.test_potential: 
 	cell.unfix_all()
@@ -738,7 +739,7 @@ for p in cell.params:
 write(cell.seed+".out", "")
 
 # Run the saddle point algorithm
-path = find_saddle_point(cell, line_min=line_min)
+path = find_saddle_point(cell, line_min=line_min, max_step_size=max_step_size)
 
 # Plot potential/path if this is a test
 if cell.test_potential: plot_path_info(path, cell)	

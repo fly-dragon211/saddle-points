@@ -1,3 +1,5 @@
 fix_atoms 1
 fix_lattice_params
 fix_lattice_angles
+max_step_size 0.01
+line_minimize

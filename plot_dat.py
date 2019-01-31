@@ -28,7 +28,7 @@ for p in range(0,len(steps[0]["Value"])-1):
 	
 	plt.subplot(ny, nx, plot_count)
 	plot_count += 1
-	plt.plot([steps[0]["Value"][0]],[steps[0]["Value"][1]],marker=".",markersize=20)
+	plt.plot([steps[0]["Value"][p]],[steps[0]["Value"][p+1]],marker=".",markersize=20)
 	xs = [s["Value"][p] for s in steps]
 	ys = [s["Value"][p+1] for s in steps]
 	plt.plot(xs,ys, color="blue", label="Path")
