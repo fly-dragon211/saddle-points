@@ -81,13 +81,14 @@ plt.axhline(0,color="black")
 plt.xlabel("Iteration")
 plt.ylabel("|Force|")
 
-plt.subplot(ny, nx, plot_count)
-plot_count += 1
-deltas = [np.array(steps[i]["Value"])-np.array(steps[i-1]["Value"]) for i in range(1,len(steps))]
-plt.plot([la.norm(d) for d in deltas])
-plt.ylim([0, max([la.norm(d)*1.1 for d in deltas])])
-plt.xlabel("Iteration")
-plt.ylabel("Step size")
+if len(steps) > 1:
+	plt.subplot(ny, nx, plot_count)
+	plot_count += 1
+	deltas = [np.array(steps[i]["Value"])-np.array(steps[i-1]["Value"]) for i in range(1,len(steps))]
+	plt.plot([la.norm(d) for d in deltas])
+	plt.ylim([0, max([la.norm(d)*1.1 for d in deltas])])
+	plt.xlabel("Iteration")
+	plt.ylabel("Step size")
 
 plt.subplot(ny, nx, plot_count)
 plot_count += 1

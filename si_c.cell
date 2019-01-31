@@ -8,5 +8,5 @@ Si 0    0    0
 C  0.25 0.25 0.25
 %endblock positions_frac
 
-kpoint_mp_spacing 0.05
+kpoint_mp_grid 4 4 4
 symmetry_generate
