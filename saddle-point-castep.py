@@ -479,14 +479,13 @@ class path_info(object):
 		self.fperp      = None
 		self.config     = None
 		self.line_min   = None
-		self.pot_after  = None
 		self.activation = None
 
 	def verbose_info(self, cell):
 		vp = cell.variable_params()
 		ra = range(0,len(vp))
 		s  = ""
-		s += "\nPotential before/after:"+str(self.pot)+","+str(self.pot_after)
+		s += "\nPotential:"+str(self.pot)
 		s += "\nName:"+",".join([p.name for p in vp])
 		s += "\nValue:"+",".join([str(self.config[i]*vp[i].scale) for i in ra])
 		s += "\nNormal:"+",".join([str(self.norm[i]*vp[i].scale) for i in ra])
@@ -596,10 +595,9 @@ def find_saddle_point(cell, line_min=False, max_step_size=0.05):
 		if line_min:
 			# Perform a line minimization along the
 			# perpendicular component
-			p.pot_after = cell.line_min_config(step_size, p.fperp, step_size*2)
+			cell.line_min_config(step_size, p.fperp, step_size*2)
 			p.line_min  = cell.config - p.config - p.activation
 		else:
-			p.pot_after = p.pot
 			p.line_min  = np.zeros(len(p.config))
 
 		# Record this step

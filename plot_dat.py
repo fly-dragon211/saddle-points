@@ -68,8 +68,7 @@ for p in range(0,len(steps[0]["Value"])-1):
 
 plt.subplot(ny, nx, plot_count)
 plot_count += 1
-plt.plot([s["Potential before/after"][0] for s in steps], label="Before iteration")
-plt.plot([s["Potential before/after"][1] for s in steps], label="After iteration")
+plt.plot([s["Potential"][0] for s in steps])
 plt.xlabel("Iteration")
 plt.ylabel("Potential")
 plt.legend(loc="best")
@@ -92,7 +91,7 @@ if len(steps) > 1:
 
 plt.subplot(ny, nx, plot_count)
 plot_count += 1
-plt.plot([la.norm(s["Value"]) for s in steps], [s["Potential before/after"][1] for s in steps])
+plt.plot([la.norm(s["Value"]) for s in steps], [s["Potential"][0] for s in steps])
 plt.xlabel("|Config - initial|")
 plt.ylabel("Potential")
 
