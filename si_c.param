@@ -1,5 +1,4 @@
 task             : singlepoint
 cut_off_energy   : 300 eV
 opt_strategy     : speed
-calculate_stress : true
 write_none       : true

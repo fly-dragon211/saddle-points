@@ -17,7 +17,7 @@ for i, line in enumerate(lines):
 	name, vals = line.split(":")
 	vals = vals.split(",")
 	try:
-		step[name] = [float(v) for v in vals]
+		step[name] = np.array([float(v) for v in vals])
 	except:
 		step[name] = vals
 
@@ -91,8 +91,11 @@ if len(steps) > 1:
 
 plt.subplot(ny, nx, plot_count)
 plot_count += 1
-plt.plot([la.norm(s["Value"]) for s in steps], [s["Potential"][0] for s in steps])
-plt.xlabel("|Config - initial|")
+disp = [0]
+for i in range(1,len(steps)):
+	disp.append(disp[-1]+la.norm(steps[i]["Value"]-steps[i-1]["Value"]))
+plt.plot(disp, [s["Potential"][0] for s in steps])
+plt.xlabel("Displacement along path")
 plt.ylabel("Potential")
 
 plt.show()
