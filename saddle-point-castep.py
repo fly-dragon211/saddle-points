@@ -512,8 +512,9 @@ class path_info(object):
 			s  += "\n"+fs.format(par,val,ini,frc)
 		return s
 
-	def step_info(self, cell, norm_step_size):
-		s  = "Normalized step size: "+str(norm_step_size)
+	def step_info(self, cell, para_ss, perp_ss):
+		s  = "Normalized parallel step size: "+str(para_ss)
+		s += "\nNormalized perpendicular step size: "+str(perp_ss)
 		fs = "{0:20.20}  {1:10.10}  {2:10.10}  {3:10.10}"
 		h  = fs.format("Parameter","Activation","Line min","Step")
 		dv = "".join(["~" for c in h])
@@ -544,7 +545,8 @@ def write(fname, message):
 def find_saddle_point(cell, line_min=False, max_step_size=0.05):
 
 	MAX_STEP_SIZE = max_step_size
-	step_size = MAX_STEP_SIZE # Step size in config space
+	para_ss = MAX_STEP_SIZE   # Parllel step size in config space
+	perp_ss = MAX_STEP_SIZE   # Perpendicular step size in config space
 	path = []                 # Will contain info about path
 
 	write(cell.seed+".out","%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
@@ -556,7 +558,8 @@ def find_saddle_point(cell, line_min=False, max_step_size=0.05):
 	write(cell.seed+".out","Maximum normalized step size: "+str(max_step_size))
 
 	# Pick a random search direction
-	rand = step_size*(np.random.rand(len(cell.config))*2-1)
+	rand = MAX_STEP_SIZE*(np.random.rand(len(cell.config))*2-1)
+	#if cell.test_potential: rand = MAX_STEP_SIZE * np.array([0.5,0.5])
 	
 	# Take initial random step
 	cell.config += rand
@@ -574,7 +577,7 @@ def find_saddle_point(cell, line_min=False, max_step_size=0.05):
 
 		# Evaluate the force in the current 
 		# configuration using finite differences
-		p.pot, p.force  = cell.potential_and_force(fd_eps = step_size/10)
+		p.pot, p.force  = cell.potential_and_force(fd_eps = (para_ss+perp_ss)/20)
 		write(cell.seed+".out", p.force_info(cell)+"\n")
 
 		# Evaluate a normal and evaluate the 
@@ -585,37 +588,54 @@ def find_saddle_point(cell, line_min=False, max_step_size=0.05):
 		p.fpara = np.dot(p.force, p.norm)*p.norm
 		p.fperp = p.force - p.fpara
 
+		if len(path) > 0:
+			if np.dot(p.fpara, path[-1].fpara) < 0:
+				# The parallel force changed 
+				f1 = la.norm(p.fpara)
+				f2 = la.norm(path[-1].fpara)
+				para_ss *= f1 / (f1 + f2)
+
+			if np.dot(p.fperp, path[-1].fperp) < 0:
+				f1 = la.norm(p.fperp)
+				f2 = la.norm(path[-1].fperp)
+				perp_ss *= f1 / (f1 + f2)
+
 		# Activate the configuration along the
 		# normal by inverting the parallel force
 		# component
-		p.activation = p.fperp - p.fpara
-		p.activation = step_size * p.activation / la.norm(p.activation)
+		p.activation  = perp_ss * p.fperp / la.norm(p.fperp) 
+		p.activation -= para_ss * p.fpara / la.norm(p.fpara)
 		cell.config  = p.config + p.activation
+
+		if False:
+			if len(path) > 0:
+				# THIS IS GOOD SHIT
+				new_config = np.zeros(len(p.config))
+				for i in range(0, len(new_config)):
+					ratio = p.force[i]/(path[-1].force[i] - p.force[i])
+					new_config[i] = p.config[i] + ratio * (p.config[i] - path[-1].config[i])
+
+				disp = new_config - cell.config
+				if la.norm(disp) > MAX_STEP_SIZE:
+					disp = MAX_STEP_SIZE * disp / la.norm(disp)
+				cell.config += disp
 
 		if line_min:
 			# Perform a line minimization along the
 			# perpendicular component
-			cell.line_min_config(step_size, p.fperp, step_size*2)
+			cell.line_min_config(perp_ss, p.fperp, perp_ss*2)
 			p.line_min  = cell.config - p.config - p.activation
 		else:
 			p.line_min  = np.zeros(len(p.config))
 
 		# Record this step
-		write(cell.seed+".out", p.step_info(cell, step_size))
+		write(cell.seed+".out", p.step_info(cell, para_ss, perp_ss))
 		write(cell.seed+".dat", p.verbose_info(cell))
 		path.append(p)
 
-		if len(path) > 2:
+		if la.norm(p.force) < 0.0001:
+			break
 
-			# If we've gone back on ourselves
-			# reduce the step size (a reduction
-			# by a factor of 2 corresponds to
-			# bisecting towards the minimum)
-			d1 = path[-1].config - path[-2].config
-			d2 = path[-2].config - path[-3].config
-			if np.dot(d1,d2) < 0: 
-				step_size /= 2
-				write(cell.seed+".out", "Inversion detected, halving step size")
 	return path
 
 def plot_path_info(path, cell):
@@ -629,7 +649,7 @@ def plot_path_info(path, cell):
 	plt.subplot(1,2,1)
 	if cell.test_potential: cell.plot_potential()
 	plt.plot([p.config[0]*scales[0] for p in path],
-	         [p.config[1]*scales[1] for p in path])
+	         [p.config[1]*scales[1] for p in path], marker="+")
 
 	for p in path: 
 		cf = p.config * scales
