@@ -512,7 +512,7 @@ class path_info(object):
 		s  = "Normalized parallel step size: "+str(para_ss)
 		s += "\nNormalized perpendicular step size: "+str(perp_ss)
 		fs = "{0:20.20}  {1:10.10}  {2:10.10}  {3:10.10}"
-		h  = fs.format("Parameter","Activation","Line min","Step")
+		h  = fs.format("Parameter","Activation","Relaxation","Step")
 		dv = "".join(["~" for c in h])
 		s += "\n" + dv + "\n" + h + "\n" + dv
 		vp = cell.variable_params()
