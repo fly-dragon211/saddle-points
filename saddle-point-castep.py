@@ -120,7 +120,6 @@ class cell(object):
 		self.params = []
 		self.atom_names = []
 		self.pot_evals = 0
-		self.force_evals = 0
 		self.seed = cellfile.split("/")[-1].split(".cell")[0]
 		self.singlepoint_count = 0
 		self.test_potential = False
@@ -264,18 +263,19 @@ class cell(object):
 			ei[i] = fd_eps
 			self.config += ei
 			ret[i] = -(self.test_pot(rotation=rotation)-p0)/fd_eps
+			self.config -= ei
 		return ret
 
 	def potential_and_force(self, fd_eps=0.01):
 
+		self.singlepoint_count += 1
+
 		if fd_eps < 10e-4: fd_eps = 10e-4
 		if self.test_potential:
+			# Get the force and potential from a test potential
 			return [self.test_pot(), self.test_force(fd_eps=fd_eps)]
 
 		# Get the force and potential from castep
-		self.force_evals += 1
-		self.singlepoint_count += 1
-
 		# Run castep with the current configuration
 		global castep_cmd
 		prefix = "singlepoints/"+self.seed+"_"+str(self.singlepoint_count)
@@ -380,8 +380,7 @@ class cell(object):
 
 		# Reset the cell to it's initial configuration
 		self.config = self.init_config
-		self.pot_evals = 0
-		self.force_evals = 0
+		self.singlepoint_count = 0
 
 	def line_min_config(self, step, config_dir, max_delta):
 
@@ -433,9 +432,6 @@ class cell(object):
 		
 		# Plot the 2D slice of the cell potential
 		# optained by varying the first two parameters
-		pot_evals_before = self.pot_evals
-		config_before = self.config
-
 		vp   = self.variable_params()
 		x    = np.linspace(-2, 2, 50) + self.init_config[0]
 		y    = np.linspace(-2, 2, 50) + self.init_config[1]
@@ -462,9 +458,7 @@ class cell(object):
 			   origin="lower",interpolation="bilinear",alpha=0.2,aspect="auto")
 		plt.xlabel(vp[0].name)
 		plt.ylabel(vp[1].name)
-
-		self.pot_evals = pot_evals_before
-		self.config    = config_before
+		self.reset()
 
 class path_info(object):
 
@@ -472,20 +466,22 @@ class path_info(object):
 	# taken through configuration space
 	
 	def __init__(self):
-		self.pot        = None
-		self.norm       = None
-		self.force      = None
-		self.fpara      = None
-		self.fperp      = None
-		self.config     = None
-		self.line_min   = None
-		self.activation = None
+		self.pot         = None
+		self.norm        = None
+		self.force       = None
+		self.fpara       = None
+		self.fperp       = None
+		self.config      = None
+		self.relaxation    = None
+		self.activation  = None
+		self.left_convex = None
 
 	def verbose_info(self, cell):
 		vp = cell.variable_params()
 		ra = range(0,len(vp))
 		s  = ""
 		s += "\nPotential:"+str(self.pot)
+		s += "\nLeft convex:"+str(self.left_convex)
 		s += "\nName:"+",".join([p.name for p in vp])
 		s += "\nValue:"+",".join([str(self.config[i]*vp[i].scale) for i in ra])
 		s += "\nNormal:"+",".join([str(self.norm[i]*vp[i].scale) for i in ra])
@@ -493,7 +489,7 @@ class path_info(object):
 		s += "\nForce parallel:"+",".join([str(self.fpara[i]) for i in ra])
 		s += "\nForce perpendicular:"+",".join([str(self.fperp[i]) for i in ra])
 		s += "\nActivation:"+",".join([str(self.activation[i]*vp[i].scale) for i in ra])
-		s += "\nLine minimization:"+",".join([str(self.line_min[i]*vp[i].scale) for i in ra])
+		s += "\nRelaxation:"+",".join([str(self.relaxation[i]*vp[i].scale) for i in ra])
 		return s		
 
 	def force_info(self, cell):
@@ -523,7 +519,7 @@ class path_info(object):
 		for i in range(0,len(vp)):
 			par = vp[i].name
 			act = self.activation[i]*vp[i].scale
-			lim = self.line_min[i]*vp[i].scale
+			lim = self.relaxation[i]*vp[i].scale
 		        s += "\n{0:20.20}  ".format(par)
 			s +="{0:10.5g}  {1:10.5g}  {2:10.5g}".format(act,lim,act+lim)
 		return s
@@ -535,19 +531,29 @@ class path_info(object):
 		return "\n" + d + "\n" + s + "\n" + d
 
 out_files = {}
-def write(fname, message):
+def write(fname, message, reset=False):
 	global out_files
 	if fname not in out_files: 
 		out_files[fname] = open(fname,"w",buffering=1)
 	f = out_files[fname]
 	f.write(message+"\n")
+	if reset:
+		for fn in out_files:
+			out_files[fn].close()
+		out_files = {}
 
-def find_saddle_point(cell, line_min=False, max_step_size=0.05):
+def find_saddle_point(
+	cell,
+	line_min=False,
+	newton_raphson=False,
+	max_step_size=0.05):
 
 	MAX_STEP_SIZE = max_step_size
 	para_ss = MAX_STEP_SIZE   # Parllel step size in config space
 	perp_ss = MAX_STEP_SIZE   # Perpendicular step size in config space
 	path = []                 # Will contain info about path
+	success = False
+	left_convex = False
 
 	write(cell.seed+".out","%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
 	write(cell.seed+".out","| Begin saddle point search |")
@@ -559,7 +565,7 @@ def find_saddle_point(cell, line_min=False, max_step_size=0.05):
 
 	# Pick a random search direction
 	rand = MAX_STEP_SIZE*(np.random.rand(len(cell.config))*2-1)
-	#if cell.test_potential: rand = MAX_STEP_SIZE * np.array([0.5,0.5])
+	#if cell.test_potential: rand = MAX_STEP_SIZE * np.array([0,0.5])
 	
 	# Take initial random step
 	cell.config += rand
@@ -589,56 +595,80 @@ def find_saddle_point(cell, line_min=False, max_step_size=0.05):
 		p.fperp = p.force - p.fpara
 
 		if len(path) > 0:
+
 			if np.dot(p.fpara, path[-1].fpara) < 0:
-				# The parallel force changed 
+				# The parallel force changed direction
 				f1 = la.norm(p.fpara)
 				f2 = la.norm(path[-1].fpara)
 				para_ss *= f1 / (f1 + f2)
 
 			if np.dot(p.fperp, path[-1].fperp) < 0:
+				# The perpendicular force changed direction
 				f1 = la.norm(p.fperp)
 				f2 = la.norm(path[-1].fperp)
 				perp_ss *= f1 / (f1 + f2)
 
-		# Activate the configuration along the
-		# normal by inverting the parallel force
-		# component
-		p.activation  = perp_ss * p.fperp / la.norm(p.fperp) 
-		p.activation -= para_ss * p.fpara / la.norm(p.fpara)
-		cell.config  = p.config + p.activation
+		if not left_convex and len(path) > 2:
 
-		if False:
-			if len(path) > 0:
-				# THIS IS GOOD SHIT
-				new_config = np.zeros(len(p.config))
-				for i in range(0, len(new_config)):
-					ratio = p.force[i]/(path[-1].force[i] - p.force[i])
-					new_config[i] = p.config[i] + ratio * (p.config[i] - path[-1].config[i])
+			# Detect when we have left the convex region
+			if p.pot - path[-1].pot < path[-1].pot - path[-2].pot:
+				write(cell.seed+".out","Left convex region")		
+				left_convex = True
 
-				disp = new_config - cell.config
-				if la.norm(disp) > MAX_STEP_SIZE:
-					disp = MAX_STEP_SIZE * disp / la.norm(disp)
-				cell.config += disp
+		p.left_convex = left_convex
+
+		p.activation = np.zeros(len(p.config))
+		p.relaxation = np.zeros(len(p.config))
+
+		# Calculate activation step
+		if left_convex and newton_raphson:
+
+			# Use newton-raphson to converge onto the saddle point
+			new_config = np.zeros(len(p.config))
+			for i in range(0, len(new_config)):
+				ratio = p.force[i]/(path[-1].force[i] - p.force[i])
+				new_config[i] = p.config[i] + ratio * (p.config[i] - path[-1].config[i])
+
+			disp = new_config - cell.config
+			if la.norm(disp) > MAX_STEP_SIZE:
+				disp = MAX_STEP_SIZE * disp / la.norm(disp)
+
+			p.relaxation += disp
+		else:
+
+			# Activate the configuration along the
+			# normal by inverting the parallel force
+			# component
+			p.activation += perp_ss * p.fperp / la.norm(p.fperp) 
+			p.activation -= para_ss * p.fpara / la.norm(p.fpara)
+
+
+		# Apply activation step
+		cell.config += p.activation
 
 		if line_min:
+
 			# Perform a line minimization along the
 			# perpendicular component
+			config_before = cell.config
 			cell.line_min_config(perp_ss, p.fperp, perp_ss*2)
-			p.line_min  = cell.config - p.config - p.activation
-		else:
-			p.line_min  = np.zeros(len(p.config))
+			p.relaxation  += cell.config - config_before
+
+		# Apply relaxation step
+		cell.config += p.relaxation
 
 		# Record this step
 		write(cell.seed+".out", p.step_info(cell, para_ss, perp_ss))
 		write(cell.seed+".dat", p.verbose_info(cell))
 		path.append(p)
 
-		if la.norm(p.force) < 0.0001:
+		if la.norm(p.force) < 0.001:
+			success = True
 			break
 
-	return path
+	return [success, path]
 
-def plot_path_info(path, cell):
+def plot_path_info(path, cell, plot_pot=True):
 
 	# Plot information about a path
 	# through the configuration space 
@@ -647,16 +677,17 @@ def plot_path_info(path, cell):
 	scales = [par.scale for par in cell.variable_params()]
 
 	plt.subplot(1,2,1)
-	if cell.test_potential: cell.plot_potential()
+	if cell.test_potential and plot_pot: cell.plot_potential()
 	plt.plot([p.config[0]*scales[0] for p in path],
 	         [p.config[1]*scales[1] for p in path], marker="+")
 
-	for p in path: 
-		cf = p.config * scales
-		ac = p.activation   * scales
-		lm = p.line_min * scales
-		plt.plot(*zip(*[cf, cf + ac]), color="red")
-		plt.plot(*zip(*[cf + ac, cf + ac + lm]), color="blue")
+	if False:
+		for p in path: 
+			cf = p.config * scales
+			ac = p.activation   * scales
+			lm = p.relaxation * scales
+			plt.plot(*zip(*[cf, cf + ac]), color="red")
+			plt.plot(*zip(*[cf + ac, cf + ac + lm]), color="blue")
 	
 	plt.subplot(4,4,3)
 	plt.plot([p.pot for p in path])
@@ -678,8 +709,6 @@ def plot_path_info(path, cell):
 	plt.xlabel("Iteration")
 	plt.ylabel("Normalized displacement")
 
-	plt.show()
-
 #########################
 #      Run program      #
 #########################
@@ -692,6 +721,7 @@ os.system("mkdir singlepoints")
 castep_cmd = "nice -15 mpirun -np 4 castep.mpi"
 cell = cell(sys.argv[1]+".cell")
 line_min = False
+newton_raphson = False
 max_step_size = 0.05
 
 # Parse the .saddle file for input specification
@@ -733,6 +763,10 @@ for l in lines:
 		# Turn on line minimization"
 		line_min = True
 
+	elif tag == "newton_raphson":
+		# Turn on newton raphson convergence
+		newton_raphson = True
+
 	elif tag == "max_step_size":
 		# Read in maximum step size
 		max_step_size = float(vals[0])
@@ -741,8 +775,8 @@ for l in lines:
 if cell.test_potential: 
 	cell.unfix_all()
 	cell.fix_atoms()
-	cell.fix_lattice_params("AB")
-	cell.fix_lattice_angles("AB")
+	cell.fix_lattice_params("C")
+	cell.fix_lattice_angles("ABC")
 
 # Output information on parameters in the cell
 write(cell.seed+".out", "Cell parameters")
@@ -756,8 +790,23 @@ for p in cell.params:
 	write(cell.seed+".out", fs.format(p.name, p.value, p.scale, p.fixed))
 write(cell.seed+".out", "")
 
-# Run the saddle point algorithm
-path = find_saddle_point(cell, line_min=line_min, max_step_size=max_step_size)
-
-# Plot potential/path if this is a test
-if cell.test_potential: plot_path_info(path, cell)	
+if not cell.test_potential:
+	# Run the saddle point algorithm
+	find_saddle_point(cell, line_min=line_min, max_step_size=max_step_size,
+			  newton_raphson=newton_raphson)
+else:
+	# Run test several times
+	repeats = 20
+	successes = 0
+	av_singlepoints = 0
+	for n in range(0,repeats):
+		cell.reset()
+		suc, path = find_saddle_point(cell, line_min=line_min, max_step_size=max_step_size,
+					      newton_raphson=newton_raphson)
+		if suc: successes += 1
+		av_singlepoints += cell.singlepoint_count
+		plot_path_info(path, cell, plot_pot=n==0)	
+		write(cell.seed+".out","",reset=True)
+	print "Average singlepoint evaluations: ", float(av_singlepoints)/repeats
+	print "Success rate: ", 100*(float(successes)/repeats), "%"
+	plt.show()

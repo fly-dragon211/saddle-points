@@ -2,4 +2,6 @@ fix_atoms 1
 fix_lattice_params
 fix_lattice_angles
 max_step_size 0.1
+newton_raphson
 #line_minimize
+test

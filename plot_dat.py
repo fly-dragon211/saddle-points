@@ -29,9 +29,9 @@ for p in range(0,len(steps[0]["Value"])-1):
 	plt.subplot(ny, nx, plot_count)
 	plot_count += 1
 	plt.plot([steps[0]["Value"][p]],[steps[0]["Value"][p+1]],marker=".",markersize=20)
-	xs = [s["Value"][p] for s in steps]
-	ys = [s["Value"][p+1] for s in steps]
-	plt.plot(xs,ys, color="blue", label="Path")
+	#xs = [s["Value"][p] for s in steps]
+	#ys = [s["Value"][p+1] for s in steps]
+	#plt.plot(xs,ys, color="blue", label="Path")
 	plt.xlabel(steps[0]["Name"][p])
 	plt.ylabel(steps[0]["Name"][p+1])
 	plt.plot(steps[0]["Value"][p],steps[0]["Value"][p+1],color="red", label="Activation")
@@ -45,8 +45,8 @@ for p in range(0,len(steps[0]["Value"])-1):
 		y = s["Value"][p+1]
 		xact = s["Activation"][p]
 		yact = s["Activation"][p+1]
-		xmin = s["Line minimization"][p]
-		ymin = s["Line minimization"][p+1]
+		xmin = s["Relaxation"][p]
+		ymin = s["Relaxation"][p+1]
 		xnorm = s["Normal"][p]
 		ynorm = s["Normal"][p+1]
 		xf = s["Force"][p]
