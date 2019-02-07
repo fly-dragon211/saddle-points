@@ -6,6 +6,6 @@ max_step_size 0.05
 force_tol 0.01
 max_iter 100
 
-test
 newton_raphson
+#test
 #line_minimize

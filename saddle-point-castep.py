@@ -239,6 +239,10 @@ class cell(object):
 			c = np.cos(r)
 			m = np.array([[c,s],[-s,c]])
 			disps = np.matmul(m, disps)
+
+		x = disps[0]
+		y = disps[1]
+		return -np.cos(x*np.pi)*np.cos(y*np.pi)
 			
 		pot = 0
 		xs = [1,1,-1,-1, 2, -2]
@@ -515,9 +519,8 @@ class path_info(object):
 			s  += "\n"+fs.format(par,val,ini,frc)
 		return s
 
-	def step_info(self, cell, para_ss, perp_ss):
-		s  = "Normalized parallel step size: "+str(para_ss)
-		s += "\nNormalized perpendicular step size: "+str(perp_ss)
+	def step_info(self, cell, step_size):
+		s  = "Normalized step size: "+str(step_size)
 		fs = "{0:20.20}  {1:10.10}  {2:10.10}  {3:10.10}"
 		h  = fs.format("Parameter","Activation","Relaxation","Step")
 		dv = "".join(["~" for c in h])
@@ -555,11 +558,9 @@ def find_saddle_point(
 	newton_raphson=False,
 	max_step_size=0.05,
 	force_tol=0.001,
-	max_iter=100):
+	max_iter=100,
+	minimizing=False):
 
-	MAX_STEP_SIZE = max_step_size
-	para_ss = MAX_STEP_SIZE   # Parllel step size in config space
-	perp_ss = MAX_STEP_SIZE   # Perpendicular step size in config space
 	path = []                 # Will contain info about path
 	success = False
 	started_decent = False
@@ -574,7 +575,7 @@ def find_saddle_point(
 	write(cell.seed+".out","Force tolerance: "+str(force_tol)+" ev/ang")
 
 	# Pick a random search direction
-	rand = MAX_STEP_SIZE*(np.random.rand(len(cell.config))*2-1)
+	rand = max_step_size*(np.random.rand(len(cell.config))*2-1)
 	norm = rand/la.norm(rand)
 	#if cell.test_potential: rand = MAX_STEP_SIZE * np.array([0,0.5])
 	
@@ -594,7 +595,7 @@ def find_saddle_point(
 
 		# Evaluate the force in the current 
 		# configuration using finite differences
-		p.pot, p.force  = cell.potential_and_force(fd_eps = (para_ss+perp_ss)/20)
+		p.pot, p.force  = cell.potential_and_force(fd_eps = max_step_size/10)
 		write(cell.seed+".out", p.force_info(cell)+"\n")
 
 		# Evaluate a normal and evaluate the 
@@ -629,8 +630,8 @@ def find_saddle_point(
 
 			# Clamp the move so we don't exceeed max_step_size
 			disp = new_config - cell.config
-			if la.norm(disp) > MAX_STEP_SIZE:
-				disp = MAX_STEP_SIZE * disp / la.norm(disp)
+			if la.norm(disp) > max_step_size:
+				disp = max_step_size * disp / la.norm(disp)
 
 			# Apply newton-raphson (as part of the relaxation step)
 			p.relaxation += disp
@@ -639,8 +640,10 @@ def find_saddle_point(
 			# Activate the configuration along the
 			# normal by inverting the parallel force
 			# component
-			p.relaxation += perp_ss * p.fperp / la.norm(p.fperp) 
-			p.activation -= para_ss * p.fpara / la.norm(p.fpara)
+			p.relaxation += max_step_size * p.fperp / la.norm(p.fperp) 
+			sign = -1
+			if minimizing: sign = 1
+			p.activation += sign * max_step_size * p.fpara / la.norm(p.fpara)
 
 		# Apply activation/relaxation step
 		cell.config += p.activation
@@ -650,10 +653,10 @@ def find_saddle_point(
 
 			# Perform a line minimization along the
 			# perpendicular component
-			cell.line_min_config(perp_ss, p.fperp, perp_ss*2)
+			cell.line_min_config(max_step_size, p.fperp, max_step_size*2)
 
 		# Record this step
-		write(cell.seed+".out", p.step_info(cell, para_ss, perp_ss))
+		write(cell.seed+".out", p.step_info(cell, la.norm(cell.config-p.config)))
 		write(cell.seed+".dat", p.verbose_info(cell))
 		path.append(p)
 
@@ -664,14 +667,55 @@ def find_saddle_point(
 	return [success, path]
 
 def find_minimum(cell, init_direction, max_step_size=0.05):
+
 	path = []
-	for n in range(0,10):
+	init_config = cell.config
+	cell.config += 5 * max_step_size * init_direction / la.norm(init_direction)
+	close_to_minima = False
+
+	for n in range(0,100):
+
 		p = path_info()
-		cell.config += max_step_size * init_direction / la.norm(init_direction)
-		p.config = cell.config
 		p.pot, p.force = cell.potential_and_force()
-		cell.config += max_step_size * p.force/la.norm(p.force)
+		p.config = cell.config
+		p.norm   = p.config - init_config 
+		p.norm  /= la.norm(p.norm)
+		p.fpara  = np.dot(p.force, p.norm)*p.norm
+		p.fperp  = p.force - p.fpara
+		
+		if len(path) > 0:
+			if p.pot > path[-1].pot:
+				close_to_minima = True
+
+		p.relaxation = np.zeros(len(p.config))
+		p.activation = np.zeros(len(p.config))
+
+		if close_to_minima and newton_raphson:
+
+			# Use newton-raphson to converge onto the minimum
+			new_config = np.zeros(len(p.config))
+			for i in range(0, len(new_config)):
+				denom = path[-1].force[i] - p.force[i]
+				if denom == 0: ratio = 1
+				else: ratio = p.force[i]/denom
+				new_config[i] = p.config[i] + ratio * (p.config[i] - path[-1].config[i])
+
+			# Clamp the move so we don't exceeed max_step_size
+			disp = new_config - cell.config
+			if la.norm(disp) > max_step_size:
+				disp = max_step_size * disp / la.norm(disp)
+
+			# Apply newton-raphson (as part of the relaxation step)
+			p.relaxation += disp
+
+		else:
+			# Steepest decent
+			p.relaxation = p.force
+			p.relaxation = max_step_size * p.relaxation / la.norm(p.relaxation)
+
+		cell.config += p.relaxation
 		path.append(p)
+
 	return path
 
 def plot_path_info(path, cell, plot_pot=True):
@@ -819,7 +863,7 @@ if not cell.test_potential:
 		find_minimum(cell, cell.config - cell.init_config)
 else:
 	# Run test several times
-	repeats = 20
+	repeats = 1
 	successes = 0
 	av_singlepoints = 0
 	for n in range(0,repeats):
@@ -836,8 +880,8 @@ else:
 			successes += 1
 			path.extend(find_minimum(cell, cell.config - cell.init_config,
 				    max_step_size=max_step_size))
-			plot_path_info(path, cell, plot_pot=n==0)
 
+		plot_path_info(path, cell, plot_pot=n==0)
 		write(cell.seed+".out","",reset=True)
 
 	print "Average singlepoint evaluations: ", float(av_singlepoints)/repeats
