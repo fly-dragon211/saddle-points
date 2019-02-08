@@ -656,32 +656,47 @@ def find_saddle_point(
 			cell.line_min_config(max_step_size, p.fperp, max_step_size*2)
 
 		# Record this step
-		write(cell.seed+".out", p.step_info(cell, la.norm(cell.config-p.config)))
+		write(cell.seed+".out", p.step_info(cell, la.norm(p.relaxation+p.activation)))
 		write(cell.seed+".dat", p.verbose_info(cell))
 		path.append(p)
 
 		if la.norm(p.force) < force_tol:
 			success = True
+			write(cell.seed+".out",
+			"\n|Force| = "+str(la.norm(p.force))+" < force_tol = "+str(force_tol))
+			write(cell.seed+".out", "Saddle point reached")
 			break
 
 	return [success, path]
 
-def find_minimum(cell, init_direction, max_step_size=0.05):
+def find_minimum(cell, 
+	init_direction, 
+	max_step_size=0.05,
+	force_tol=0.001):
+
+	write(cell.seed+".out","\n%%%%%%%%%%%%%%%%%%%%%%")
+	write(cell.seed+".out",  "| Begin minimization |")
+	write(cell.seed+".out",  "%%%%%%%%%%%%%%%%%%%%%%")
 
 	path = []
 	init_config = cell.config
-	cell.config += 5 * max_step_size * init_direction / la.norm(init_direction)
+	cell.config += max_step_size * init_direction / la.norm(init_direction)
 	close_to_minima = False
 
 	for n in range(0,100):
 
 		p = path_info()
-		p.pot, p.force = cell.potential_and_force()
 		p.config = cell.config
 		p.norm   = p.config - init_config 
 		p.norm  /= la.norm(p.norm)
+
+		write(cell.seed+".out", path_info.iter_header(n+1))
+
+		p.pot, p.force = cell.potential_and_force()
 		p.fpara  = np.dot(p.force, p.norm)*p.norm
 		p.fperp  = p.force - p.fpara
+
+		write(cell.seed+".out", p.force_info(cell)+"\n")
 		
 		if len(path) > 0:
 			if p.pot > path[-1].pot:
@@ -714,7 +729,16 @@ def find_minimum(cell, init_direction, max_step_size=0.05):
 			p.relaxation = max_step_size * p.relaxation / la.norm(p.relaxation)
 
 		cell.config += p.relaxation
+
+		write(cell.seed+".out", p.step_info(cell, la.norm(p.relaxation)))
+		write(cell.seed+".dat", p.verbose_info(cell))
 		path.append(p)
+
+		if la.norm(p.force) < force_tol:
+			write(cell.seed+".out",
+			"\n|Force| = "+str(la.norm(p.force))+" < force_tol = "+str(force_tol))
+			write(cell.seed+".out", "Minimum reached")
+			break
 
 	return path
 
@@ -768,7 +792,7 @@ os.system("rm -r singlepoints")
 os.system("mkdir singlepoints")
 
 # Set global variables
-castep_cmd = "castep.serial"
+castep_cmd = "nice -15 castep.threaded"
 cell = cell(sys.argv[1]+".cell")
 line_min = False
 newton_raphson = False
@@ -863,7 +887,7 @@ if not cell.test_potential:
 		find_minimum(cell, cell.config - cell.init_config)
 else:
 	# Run test several times
-	repeats = 1
+	repeats = 10
 	successes = 0
 	av_singlepoints = 0
 	for n in range(0,repeats):
@@ -879,7 +903,7 @@ else:
 		if suc: 
 			successes += 1
 			path.extend(find_minimum(cell, cell.config - cell.init_config,
-				    max_step_size=max_step_size))
+				    max_step_size=max_step_size, force_tol=force_tol))
 
 		plot_path_info(path, cell, plot_pot=n==0)
 		write(cell.seed+".out","",reset=True)
