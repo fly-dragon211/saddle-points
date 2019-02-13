@@ -51,15 +51,23 @@ for p in range(0,len(steps[0]["Value"])-1):
 		ynorm = s["Normal"][p+1]
 		xf = s["Force"][p]
 		yf = s["Force"][p+1]
-
-		act_length = np.sqrt(xact*xact+yact*yact)
+		
+		xs = xact+xmin
+		ys = yact+ymin
+		step_length = np.sqrt(xs*xs+ys*ys)
 
 		fnorm = np.sqrt(xf*xf+yf*yf)
-		xf *= act_length/(10*fnorm)
-		yf *= act_length/(10*fnorm)
+		xf *= step_length/(10*fnorm)
+		yf *= step_length/(10*fnorm)
 
-		xnorm *= act_length/10
-		ynorm *= act_length/10
+		xnorm *= step_length/10
+		ynorm *= step_length/10
+
+		act_color = "red"
+		relax_color = "red"
+		if "Minimization" in s["Path"]:
+			act_color = "purple"
+			relax_color = "blue"
 
 		plt.plot([x,x+xact], [y,y+yact], color="red", linestyle="--")
 		plt.plot([x+xact, x+xact+xmin], [y+yact, y+yact+ymin], color="green", linestyle="--")

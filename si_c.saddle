@@ -7,5 +7,5 @@ force_tol 0.01
 max_iter 100
 
 newton_raphson
-#test
+test
 #line_minimize

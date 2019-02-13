@@ -9,7 +9,7 @@ def interpolate(interp_to, xs, fs):
 
 	# Perform a 1D minimum-curvature interpolation 
 	# passing through the points (xs, fs). Evaluates
-	# the interpolation at the xvalues in interp_to
+	# the interpolation at the x values in interp_to
 	if len(xs) != len(fs):
 		print "Error in interpolation: len(xs) != len(fs)."
 		quit()
@@ -347,7 +347,7 @@ class cell(object):
 		
 		# Get forces corresponding to variable parameters
 		vp = self.variable_params()
-		force = [par_force[p] for p in vp]
+		force = np.array([par_force[p] for p in vp])
 		return [pot, force]
 		
 		# Get the force using finite differences
@@ -483,16 +483,16 @@ class path_info(object):
 		self.fpara       = None
 		self.fperp       = None
 		self.config      = None
-		self.relaxation    = None
+		self.path_name   = None
+		self.relaxation  = None
 		self.activation  = None
-		self.started_decent = None
 
 	def verbose_info(self, cell):
 		vp = cell.variable_params()
 		ra = range(0,len(vp))
 		s  = ""
+		s += "\nPath:"+str(self.path_name)
 		s += "\nPotential:"+str(self.pot)
-		s += "\nStarted decent:"+str(self.started_decent)
 		s += "\nName:"+",".join([p.name for p in vp])
 		s += "\nValue:"+",".join([str(self.config[i]*vp[i].scale) for i in ra])
 		s += "\nNormal:"+",".join([str(self.norm[i]*vp[i].scale) for i in ra])
@@ -571,6 +571,8 @@ def find_saddle_point(
 	write(cell.seed+".out","%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
 	if line_min: write(cell.seed+".out","Line minimization: on")
 	else: write(cell.seed+".out","Line minimization: off")
+	if newton_raphson: write(cell.seed+".out","Newton raphson: on")
+	else: write(cell.seed+".out","Newton raphson: off")
 	write(cell.seed+".out","Maximum normalized step size: "+str(max_step_size))
 	write(cell.seed+".out","Force tolerance: "+str(force_tol)+" ev/ang")
 
@@ -589,6 +591,7 @@ def find_saddle_point(
 
 		write(cell.seed+".out", path_info.iter_header(step_index+1))
 		p = path_info()
+		p.path_name = "Saddle point search"
 
 		# Initialize this step
 		p.config = cell.config
@@ -608,17 +611,20 @@ def find_saddle_point(
 
 		if not started_decent and len(path) > 2:
 
-			# Detect when we have left the convex region
+			# Detect when we have left the basin
 			if p.pot < path[-1].pot:
-				write(cell.seed+".out","Left convex region")		
+				write(cell.seed+".out","____________")		
+				write(cell.seed+".out"," Left basin ")		
+				write(cell.seed+".out","\_/^\_/^\_/^\n")		
 				started_decent = True
 
-		p.started_decent = started_decent
 		p.activation = np.zeros(len(p.config))
 		p.relaxation = np.zeros(len(p.config))
 
 		# Calculate activation step
 		if started_decent and newton_raphson:
+
+			p.path_name = "Saddle point search (newton raphson)"
 
 			# Use newton-raphson to converge onto the saddle point
 			new_config = np.zeros(len(p.config))
@@ -686,6 +692,7 @@ def find_minimum(cell,
 	for n in range(0,100):
 
 		p = path_info()
+		p.path_name = "Minimization"
 		p.config = cell.config
 		p.norm   = p.config - init_config 
 		p.norm  /= la.norm(p.norm)
@@ -700,12 +707,17 @@ def find_minimum(cell,
 		
 		if len(path) > 0:
 			if p.pot > path[-1].pot:
+				write(cell.seed+".out","_________________")		
+				write(cell.seed+".out"," Close to minima ")		
+				write(cell.seed+".out"," \_/ \_/ \_/ \_/ \n")		
 				close_to_minima = True
 
 		p.relaxation = np.zeros(len(p.config))
 		p.activation = np.zeros(len(p.config))
 
 		if close_to_minima and newton_raphson:
+	
+			p.path_name = "Minimization (newton raphson)"
 
 			# Use newton-raphson to converge onto the minimum
 			new_config = np.zeros(len(p.config))
@@ -879,12 +891,18 @@ if not cell.test_potential:
 	suc, path = find_saddle_point(cell, line_min=line_min, max_step_size=max_step_size,
 	 			      newton_raphson=newton_raphson, force_tol=force_tol,
 				      max_iter=max_iter)
+
 	if suc: 
 		write(cell.seed+".out", "\n=================================")
 		write(cell.seed+".out",   "| Success: Saddle point reached |")
 		write(cell.seed+".out",   "=================================")
 
 		find_minimum(cell, cell.config - cell.init_config)
+	else:
+		write(cell.seed+".out", "\n=======================================")
+		write(cell.seed+".out",   "| Failed: maximum iterations reached! |")
+		write(cell.seed+".out",   "=======================================")
+		
 else:
 	# Run test several times
 	repeats = 10
