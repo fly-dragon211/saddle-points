@@ -1,0 +1,30 @@
+&CONTROL
+  calculation = 'scf',
+  tprnfor = .true.,
+  tstress = .true.,
+  pseudo_dir = "../"
+/
+&SYSTEM
+  ibrav = 0,
+  nat   = 2,
+  ntyp = 2,
+  ecutwfc = 30
+/
+&ELECTRONS
+/
+
+ATOMIC_SPECIES
+  Si  1.0 si.UPF
+  C  1.0 c.UPF
+
+CELL_PARAMETERS (angstrom)
+   3.088679993  -0.000000000   0.000000000
+   1.544339996   2.674875369  -0.000000000
+   1.544339996   0.891625156   2.526982335
+
+ATOMIC_POSITIONS (angstrom)
+Si      -0.000000000   0.000000000  -0.000949746
+C        1.544339996   0.891625112   0.632695318
+
+K_POINTS automatic
+  4 4 4 1 1 1
