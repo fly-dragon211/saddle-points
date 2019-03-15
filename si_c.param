@@ -1,4 +1,0 @@
-task             : singlepoint
-cut_off_energy   : 300 eV
-opt_strategy     : speed
-write_none       : true

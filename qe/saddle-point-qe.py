@@ -141,13 +141,12 @@ def act_relax(atom_positions,
 
 		f_eff = f_perp - f_para
 
-		if la.norm(f_eff) > max_step:
-			f_eff = f_eff * max_step / la.norm(f_eff)
-
 		for i in range(0,3): f_eff[i] = 0
+		if la.norm(f_eff) > max_step: f_eff = f_eff * max_step / la.norm(f_eff)
 		path_p.append(path_p[-1] + f_eff)
 	
 		print pot, la.norm(f)
+
 		if la.norm(f) < 10e-5:
 			print "Saddle point reached!"
 			break
