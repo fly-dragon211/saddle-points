@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import numpy.linalg as la
+import subprocess as sub
 
 # Set the atom positions in a q.e input file
 def set_atom_positions(in_file, atom_positions):
@@ -33,6 +34,25 @@ def set_atom_positions(in_file, atom_positions):
 	for i in range(i_written_to, len(lines)):
 		f.write(lines[i]+"\n")
 
+# Set the cell parametres in a q.e input file
+def set_cell_parameters(in_file, cell_params):
+	
+	f = open(in_file)
+	lines = f.read().split("\n")
+	f.close()
+
+	f = open(in_file, "w")
+
+	i_cell = -100000
+	for i, l in enumerate(lines):
+		if "CELL_PARAMETERS" in l: i_cell = i + 1
+
+		if i - i_cell in [0, 1, 2]:
+			f.write(" ".join([str(p) for p in cell_params[i-i_cell]])+"\n")
+		else:
+			f.write(l+"\n")	
+		
+
 # Postprocess after a singlepoint calculation
 def postprocess(infile):
 	f = infile
@@ -47,26 +67,34 @@ def postprocess(infile):
         os.system("c2x -e=0.01 "+f+".cell --int 2>"+f+".symm")
 
 	script  = 'load "'+f.split("/")[-1]+'.cell" {2 2 2}\n'
+	script += "center *\n"
+	#script += "set perspectiveDepth on\n"
+	#script += "set cameraDepth 0.5\n"
 	script += 'write image 500 500 PNG -1 "'+f.split("/")[-1]+'.png"\n'
 
 	fj = open("singlepoints/jmol_script","w")
 	fj.write(script)
 	fj.close()
-       	os.system("cd singlepoints; jmol --silent -n -s jmol_script 2>&1 1>/dev/null")
 
+	with open(os.devnull, "w") as devnull:
+		sub.Popen("jmol --silent -n -s jmol_script",
+			   cwd="singlepoints", shell=True,
+			   stdout = devnull, stderr = devnull)
 
-# Run a q.e singlepoint at the given atom positions
+# Run a q.e singlepoint at the given atom position and cell parameters
 singlepoint_count = 1
-def run_singlepoint(atom_positions):
+def run_singlepoint(atom_positions, cell_parameters):
 	global singlepoint_count
 
 	os.system("mkdir singlepoints 2>/dev/null")
 	os.system("cp si_c.in singlepoints")
 	set_atom_positions("singlepoints/si_c.in", atom_positions)
+	set_cell_parameters("singlepoints/si_c.in", cell_parameters)
 	os.system("cd singlepoints; nice -15 mpirun pw.x -nk 4 <si_c.in> si_c.out")
 	lines = open("singlepoints/si_c.out").read().split("\n")
 
 	atom_forces = []
+	stress_tensor = []
 	total_energy = None
 
 	for i, l in enumerate(lines):
@@ -83,6 +111,10 @@ def run_singlepoint(atom_positions):
 					continue
 		if "!" in l:
 			total_energy = float(l.split("=")[-1].split("R")[0])
+
+		if "(Ry/bohr**3)" in l and "stress" in l:
+			for j in range(i+1, i+4):
+				stress_tensor.append([float(w) for w in lines[j].split()[0:3]])
 	
 	os.system("mv singlepoints/si_c.out singlepoints/si_c_"+
 		   str(singlepoint_count)+".out")
@@ -93,7 +125,7 @@ def run_singlepoint(atom_positions):
 	
 	singlepoint_count += 1
 
-	return [total_energy, atom_forces]
+	return [total_energy, atom_forces, stress_tensor]
 
 # Apply newton-raphson to the atomic forces
 # to find a local stationary point on the B.O.S
@@ -120,19 +152,22 @@ def newton_raphson(atom_positions):
 
 # Carry out activation-relaxation to find a saddle point
 def act_relax(atom_positions,
+	      cell_parameters,
 	      max_step = 0.5):
 
-	start_pos = atom_positions
-	start_pot, start_f = run_singlepoint(start_pos)
+	start_pos  = atom_positions
+	start_cell = cell_parameters
+	start_pot, start_f, start_stress = run_singlepoint(start_pos, start_cell)
 
 	rand_d  = np.random.rand(len(atom_positions))-0.5
 	for i in range(0,3): rand_d[i] = 0
 	rand_d /= la.norm(rand_d)
 	path_p  = [np.array(atom_positions) + max_step*rand_d]
+	path_c  = [start_cell]
 
 	for iteration in range(0,50):
 		
-		pot, f = run_singlepoint(path_p[-1])
+		pot, f, stress = run_singlepoint(path_p[-1], path_c[-1])
 		n  = path_p[-1].copy() - start_pos
 		n /= la.norm(n)
 
@@ -143,13 +178,21 @@ def act_relax(atom_positions,
 
 		for i in range(0,3): f_eff[i] = 0
 		if la.norm(f_eff) > max_step: f_eff = f_eff * max_step / la.norm(f_eff)
+
 		path_p.append(path_p[-1] + f_eff)
+		path_c.append(path_c[-1])
+
+		path_c[-1] = np.matmul(np.identity(3) +  stress, path_c[-1])
 	
-		print pot, la.norm(f)
+		print pot, la.norm(f), la.norm(path_p[-1]-path_p[-2])
 
 		if la.norm(f) < 10e-5:
 			print "Saddle point reached!"
 			break
 
 os.system("rm -r singlepoints")
-act_relax([0,0,0,1.53104,0.88946356,0.625044463])
+atom_pos = [0,0,0,1.53104,0.88946356,0.625044463]
+cell_par = [[3.088679993,  0.000000000,  0.000000000],
+	    [1.544339996,  2.674875369,  0.000000000],
+	    [1.544339996,  0.891625156,  2.526982335]]
+act_relax(atom_pos, cell_par)
