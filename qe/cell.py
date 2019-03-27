@@ -7,19 +7,6 @@ import os
 # lattice vectors
 class cell(object):
 	
-	# Constructor which takes atoms in the form
-	# [[name1, xfrac1, yfrac1, zfrac1], [name2, ...], ...]
-	# and a 3x3 lattice matrix (where the rows are the lattice vectors)
-	def __init__(self, lattice, atoms):
-
-		lattice = np.array(lattice)
-		if lattice.shape != (3,3):
-			raise Exception("Tried to construct a cell with"+
-					" a lattice that was not 3 x 3!")
-
-		self.atoms   = atoms
-		self.lattice = lattice
-
 	# Constructor which parses a q.e file
 	def __init__(self, template):
 
@@ -55,7 +42,17 @@ class cell(object):
 					a.extend([float(w) for w in spl[1:4]])
 					self.atoms.append(a)
 
-		self.lattice = np.array(self.lattice)
+		self.template = template
+		self.lattice  = np.array(self.lattice)
+
+	# Return a copy of this cell
+	def copy(self):
+		ret = cell(self.template)
+		ret.atoms       = list(self.atoms)
+		ret.lattice     = self.lattice.copy()
+		ret.stress_cart = self.stress_cart.copy()
+		ret.forces_cart = self.forces_cart.copy()
+		return ret
 
 	# Get a string containing info about this cell
 	def info(self):
@@ -70,12 +67,18 @@ class cell(object):
 		return inf.strip()
 	
 	# Get the atoms in cartesian coordinates
-	def atoms_cart(self):
+	def atoms_cart(self, include_name=True):
 		ret = []
 		for a in self.atoms:
 			pos = np.dot(np.array(a[1:4]).T, self.lattice)
-			ret.append([a[0], pos[0], pos[1], pos[2]])
-		return ret
+			if include_name:
+				ret.append([a[0], pos[0], pos[1], pos[2]])
+			else:
+				ret.append([pos[0], pos[1], pos[2]])
+		if include_name:
+			return ret
+		else:
+			return np.array(ret)
 
 	# Perturb the atoms in cartesian coordinates
 	def perturb_atoms_cart(self, pertubations):
