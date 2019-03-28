@@ -17,6 +17,7 @@ while True:
 			if not "JOB DONE" in contents: continue
 			lines = contents.split("\n")
 
+		label = "none"
 		for l in lines:
 			if "!" in l:
 				energy = float(l.split("=")[-1].split("R")[0])
@@ -26,35 +27,47 @@ while True:
 				pressure = float(l.split("=")[-1])
 			if "unit-cell volume" in l:
 				volume = float(l.split("=")[-1].split("(")[0])
-		
-		data.append([iteration, energy, force, pressure, volume])
+			if "LABEL:" in l:
+				label = l.split(":")[-1].lower()
+
+		data.append([iteration, energy, force, pressure, volume, label])
 
 	if len(data) != 0:
 		data.sort()
-		ns, es, fs, ps, vs = zip(*data)
+		ns, es, fs, ps, vs, ls = zip(*data)
 
-		plt.subplot(221)
-		plt.plot(ns, es)
-		plt.xlabel("Iteration")
-		plt.ylabel("Energy")
+		colors = {
+			"none":"blue",
+			"relax":"green",
+			"saddle_point_search":"red"
+		}
 
-		plt.subplot(222)
-		plt.plot(ns, fs)
-		plt.axhline(0)
-		plt.xlabel("Iteration")
-		plt.ylabel("|Force| (Ry/au)")
+		for i in range(0, len(data)-1):
+			
+			col = colors[ls[i]]
 
-		plt.subplot(223)
-		plt.plot(ns, ps)
-		plt.axhline(0)
-		plt.xlabel("Iteration")
-		plt.ylabel("Pressure (kbar)")
+			plt.subplot(221)
+			plt.plot(ns[i:i+2], es[i:i+2], color=col)
+			plt.xlabel("Iteration")
+			plt.ylabel("Energy")
 
-		plt.subplot(224)
-		plt.plot(ns, vs)
-		plt.xlabel("Iteration")
-		plt.ylabel("Volume (a.u^3)")
+			plt.subplot(222)
+			plt.plot(ns[i:i+2], fs[i:i+2], color=col)
+			plt.axhline(0)
+			plt.xlabel("Iteration")
+			plt.ylabel("|Force| (Ry/au)")
 
-		plt.draw()
+			plt.subplot(223)
+			plt.plot(ns[i:i+2], ps[i:i+2], color=col)
+			plt.axhline(0)
+			plt.xlabel("Iteration")
+			plt.ylabel("Pressure (kbar)")
+
+			plt.subplot(224)
+			plt.plot(ns[i:i+2], vs[i:i+2], color=col)
+			plt.xlabel("Iteration")
+			plt.ylabel("Volume (a.u^3)")
+
+	plt.draw()
 	plt.pause(0.5)
 	plt.clf()

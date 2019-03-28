@@ -1,4 +1,4 @@
-from cell import cell
+from cell import cell, last_cell, clear_calc
 import numpy as np
 import sys
 import os
@@ -27,11 +27,16 @@ def dot_pert(p1, p2):
 	return np.dot([x for r in p1 for x in r],
 		      [x for r in p2 for x in r])
 
-os.system("rm -r singlepoints")
 
 # Load the cell and run an initial singlepoint (for comparision)
-c = cell(sys.argv[1])
-c.run_singlepoint_qe(sys.argv[1])
+if len(sys.argv) < 2: 
+	# Load the cell from the last singlepoint
+	c = last_cell()
+else:
+	# Load the specified cell and clear the calculation
+	clear_calc()
+	c = cell(sys.argv[1])
+c.run_singlepoint_qe()
 
 # Pick the direction in configuration
 # space and perturb the cell along it
@@ -39,10 +44,10 @@ norm = get_rand_pert(len(c.atoms))
 c.perturb_atoms_cart(set_max_disp(norm, 0.1))
 
 # Run activation-relaxation
-for i in range(0,100):
+while True:
 
 	# Calculate forces etc
-        c.run_singlepoint_qe(sys.argv[1])
+        c.run_singlepoint_qe(label="saddle_point_search")
 
 	# Due to translational invariance
 	# we may keep the first atom position fixed
@@ -59,3 +64,9 @@ for i in range(0,100):
 
 	# Relax the lattice vectors
         c.apply_strain_cart(c.stress_cart/1000)
+
+	# Stop if converged
+	if c.total_force  > 10e-8: continue
+        if c.total_stress > 0.01: continue
+        break
+

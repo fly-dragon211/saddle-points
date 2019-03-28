@@ -1,6 +1,25 @@
 import numpy as np
 import os
 
+# Clears the current calculation
+def clear_calc():
+	os.system("rm -r singlepoints")
+
+# Create a cell from the last singlepoint run
+def last_cell():
+
+	max_n = -1
+	flast = None
+	for f in os.listdir("singlepoints"):
+		if not f.endswith(".in"): continue
+		num = int(f.split("_")[-1].split(".")[0])
+		if num > max_n:
+			max_n = num
+			flast = f
+
+	return cell("singlepoints/"+flast)
+
+
 # The cell object represents the current
 # simulation cell as a set of atoms and
 # fractional coordinates and a set of
@@ -100,7 +119,7 @@ class cell(object):
 	# Run a singlepoint calculation at this cell config
 	# takes a template file with the settings etc and simply
 	# replaces the cell coordinates etc
-	def run_singlepoint_qe(self, template_file):
+	def run_singlepoint_qe(self,label=None):
 
 		# Create the singlepoint directory if it doesn't exist
 		if not os.path.isdir("singlepoints/"):
@@ -110,11 +129,16 @@ class cell(object):
 		# label them sequentially
 		spc = 0
 		for f in os.listdir("singlepoints"):
-			if f.endswith(".in"):
-				spc += 1
+			if not f.endswith(".in"): continue
+			try:
+				num = int(f.split("_")[-1].split(".")[0])
+				if num > spc: spc = num
+			except:
+				continue
+		spc += 1
 
 		# Read the template file in by lines
-		with open(template_file) as f:
+		with open(self.template) as f:
 			lines = f.read().split("\n")
 
 		# Create the q.e input file for this singlepoint run
@@ -183,6 +207,11 @@ class cell(object):
 
 		self.stress_cart = np.array(self.stress_cart)
 		self.forces_cart = np.array(self.forces_cart)
+
+		# Write label to output file
+		if label != None:
+			with open("singlepoints/"+outfile,"a") as f:
+				f.write("\nLABEL:"+label)
 
 	@property
 	def total_force(self):
