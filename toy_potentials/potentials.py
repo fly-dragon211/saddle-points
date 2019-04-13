@@ -1,10 +1,11 @@
 import numpy as np
+import numpy.linalg as la
 import matplotlib.pyplot as plt
 
 def eggbox(x):
 	x0 = (x[0]-0.5)*np.pi
 	x1 = x[1]*np.pi
-	return np.sin(x0)*np.cos(x1)# + 0.1*np.sin(x0+x1)
+	return np.sin(x0)*np.cos(x1) + 0.1*np.sin(x0+x1)
 
 pot_evals = 0
 def pot(x):
@@ -13,14 +14,14 @@ def pot(x):
 	return eggbox(x)
 
 def grad_fd(x, f=pot):
-	EPS = 0.01
+	EPS = 0.05
 	p0 = f(x)
 	px = f([x[0]+EPS, x[1]])
 	py = f([x[0], x[1]+EPS])
 	return np.array([px-p0,py-p0])/EPS
 
 def hess_fd(x, f=pot):
-	EPS = 0.01
+	EPS = 0.05
 	hess = np.identity(len(x), float)
 	for i in range(0,len(x)):
 		di = np.zeros(len(x))
